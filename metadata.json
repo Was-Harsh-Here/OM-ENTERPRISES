@@ -1,0 +1,6 @@
+{
+  "name": "BharatPay Retail CMS & Financial Ledger",
+  "description": "Comprehensive retail shop financial portal, daily multi-portal ledger, recharge & money transfer tracker with cash denomination drawer and distributor settlement reconciliation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
