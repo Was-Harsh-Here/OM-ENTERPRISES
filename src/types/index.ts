@@ -1,5 +1,6 @@
 export type TransactionCategory =
   | 'MONEY_TRANSFER'
+  | 'INDO_NEPAL' // Indo-Nepal Remittance (Account Deposit & Cash Payout)
   | 'RECHARGE'
   | 'ACCESSORIES'
   | 'BBPS_BILL'
@@ -8,6 +9,8 @@ export type TransactionCategory =
   | 'AEPS' // Aadhaar Enabled Payment System
   | 'EXTERNAL_JAMA' // Inflow cash/UPI deposit
   | 'EXTERNAL_DEBIT'; // Outflow / shop expenses / distributor cash
+
+export type IndoNepalTransferType = 'ACCOUNT_DEPOSIT' | 'CASH_PAYOUT';
 
 export type DmtPortal = 'GO_PAYMENTS' | 'THE_SIMPLE_PAY' | 'VD_PAYS' | 'AIRTEL_CMS' | 'ONE_STOP' | 'AIRPAY';
 
@@ -37,9 +40,20 @@ export interface Transaction {
   serviceDetail?: string; // e.g. "Zomato Rider ID: 498213", "Electricity Bill - MSEDCL", "Boat Type-C Cable"
   sourcePortal?: string; // e.g. "Go Payments API", "Jio POS", "Airtel Mitra"
   
+  // Indo-Nepal Remittance specific
+  indoNepalTransferType?: IndoNepalTransferType;
+  nepalBeneficiaryName?: string;
+  nepalBeneficiaryPhone?: string;
+  nepalBankName?: string;
+  nepalAccountNumber?: string;
+  nepalPickupAgent?: string; // e.g. Prabhu Money Transfer, IME Forex, Nepal SBI, City Express
+  citizenshipOrId?: string; // Nagrikta / Passport / Aadhaar ID
+  nepalDistrict?: string;
+  nprAmountEstimated?: number; // Calculated at 1 INR = 1.60 NPR
+
   // Financial amounts
   amount: number; // Face value of transaction
-  customerFee: number; // Surcharge charged to customer
+  customerFee: number; // Surcharge charged to customer (₹300 for Indo-Nepal)
   totalCollected: number; // amount + customerFee
   distributorCost: number; // What the portal deducted from retailer
   distributorCommission: number; // Direct cash back / incentive
@@ -172,4 +186,34 @@ export interface PortalApiCredential {
   autoSync: boolean;
   lastSyncTime?: string;
   balance?: number;
+}
+
+// Accessories Computer-Generated Bill & Thermal Invoice Configuration
+export interface AccessoryItemEntry {
+  id: string;
+  name: string;
+  hsn: string;
+  qty: number;
+  rate: number;
+  amount: number;
+  warranty: string;
+  serialNo?: string;
+}
+
+export interface AccessoryInvoiceConfig {
+  invoiceNumber: string;
+  date: string;
+  time: string;
+  customerName: string;
+  customerPhone: string;
+  customerGst?: string;
+  shopGstin: string;
+  shopAddress: string;
+  shopPhone: string;
+  items: AccessoryItemEntry[];
+  taxType: 'INCLUSIVE_18' | 'EXCLUSIVE_18' | 'EXEMPT';
+  paymentMode: PaymentMethod;
+  notes: string;
+  paperFormat: 'THERMAL_80MM' | 'TAX_INVOICE_A4';
+  computerGeneratedDeclaration: string;
 }

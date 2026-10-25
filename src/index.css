@@ -26,14 +26,20 @@
   body * {
     visibility: hidden;
   }
-  #printable-receipt, #printable-receipt * {
+  #printable-receipt, #printable-receipt *,
+  #printable-thermal-bill, #printable-thermal-bill *,
+  #printable-report, #printable-report * {
     visibility: visible;
   }
-  #printable-receipt {
+  #printable-receipt,
+  #printable-thermal-bill,
+  #printable-report {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
+    margin: 0;
+    padding: 0;
     background-color: #ffffff !important;
     color: #000000 !important;
   }

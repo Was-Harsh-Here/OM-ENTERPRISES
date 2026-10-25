@@ -18,9 +18,11 @@ import { NewTransactionModal } from './components/NewTransactionModal';
 import { PortalApiCredentialsModal } from './components/PortalApiCredentialsModal';
 import { ReceiptModal } from './components/ReceiptModal';
 import { AndroidApkModal } from './components/AndroidApkModal';
+import { AccountingExportModal } from './components/AccountingExportModal';
+import { GeminiChatbotModal } from './components/GeminiChatbotModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { Transaction, TransactionCategory } from './types';
-import { RotateCcw, Cpu, Smartphone } from 'lucide-react';
+import { RotateCcw, Cpu, Smartphone, Sparkles, FileSpreadsheet } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { shopName, resetToCleanState, clearAllTransactions, transactions } = useShop();
@@ -33,6 +35,8 @@ const AppContent: React.FC = () => {
   const [newTxnCategory, setNewTxnCategory] = useState<TransactionCategory>('MONEY_TRANSFER');
   const [isPortalApisOpen, setIsPortalApisOpen] = useState(false);
   const [isAndroidApkOpen, setIsAndroidApkOpen] = useState(false);
+  const [isAccountingExportOpen, setIsAccountingExportOpen] = useState(false);
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const [selectedReceiptTxn, setSelectedReceiptTxn] = useState<Transaction | null>(null);
 
   const handleOpenNewTxnWithCategory = (cat: TransactionCategory) => {
@@ -59,6 +63,8 @@ const AppContent: React.FC = () => {
         onOpenCashDrawer={() => setIsCashDrawerOpen(true)}
         onOpenPortalApis={() => setIsPortalApisOpen(true)}
         onOpenAndroidApk={() => setIsAndroidApkOpen(true)}
+        onOpenAccountingExport={() => setIsAccountingExportOpen(true)}
+        onOpenChatbot={() => setIsChatbotOpen(true)}
       />
 
       {/* Main Container */}
@@ -92,6 +98,19 @@ const AppContent: React.FC = () => {
         {activeTab === 'analytics' && <AnalyticsTab />}
       </main>
 
+      {/* Floating Copilot Launcher Button */}
+      <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2">
+        <button
+          type="button"
+          onClick={() => setIsChatbotOpen(true)}
+          className="group flex items-center gap-2 px-4 py-2.5 bg-linear-to-r from-indigo-600 via-purple-600 to-indigo-700 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs rounded-full shadow-xl hover:shadow-2xl transition-all duration-200 active:scale-95 border border-white/20"
+        >
+          <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+          <span>Om Copilot AI</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+        </button>
+      </div>
+
       {/* Clean quiet footer */}
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-4 px-4 sm:px-6 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -114,6 +133,14 @@ const AppContent: React.FC = () => {
               className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 font-semibold underline flex items-center gap-1"
             >
               <Smartphone className="w-3 h-3 inline" /> Android APK & Remote Mobile
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setIsAccountingExportOpen(true)}
+              className="text-slate-700 dark:text-slate-300 hover:text-indigo-600 font-semibold underline flex items-center gap-1"
+            >
+              <FileSpreadsheet className="w-3 h-3 inline text-emerald-600" /> Export CSV / PDF
             </button>
           </div>
           <div className="flex items-center gap-4">
@@ -157,6 +184,16 @@ const AppContent: React.FC = () => {
       <AndroidApkModal
         isOpen={isAndroidApkOpen}
         onClose={() => setIsAndroidApkOpen(false)}
+      />
+
+      <AccountingExportModal
+        isOpen={isAccountingExportOpen}
+        onClose={() => setIsAccountingExportOpen(false)}
+      />
+
+      <GeminiChatbotModal
+        isOpen={isChatbotOpen}
+        onClose={() => setIsChatbotOpen(false)}
       />
 
       <OfflineIndicator />

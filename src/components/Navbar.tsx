@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlusCircle, Coins, Cpu, Sun, Moon, Smartphone } from 'lucide-react';
+import { PlusCircle, Coins, Cpu, Sun, Moon, Smartphone, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { useShop } from '../context/ShopContext';
 
 export type ActiveTab =
@@ -18,6 +18,8 @@ interface NavbarProps {
   onOpenCashDrawer: () => void;
   onOpenPortalApis: () => void;
   onOpenAndroidApk: () => void;
+  onOpenAccountingExport: () => void;
+  onOpenChatbot: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -27,6 +29,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCashDrawer,
   onOpenPortalApis,
   onOpenAndroidApk,
+  onOpenAccountingExport,
+  onOpenChatbot,
 }) => {
   const { theme, toggleTheme } = useShop();
 
@@ -111,6 +115,27 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Cpu className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
             <span className="hidden sm:inline">Portal APIs</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenAccountingExport}
+            title="Export Daily Ledger & Distributor Reports (CSV & PDF)"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors whitespace-nowrap"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden lg:inline">Export Reports</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenChatbot}
+            title="Om Copilot AI - Intelligent Store Advisor"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-linear-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 rounded-lg transition-all shadow-xs whitespace-nowrap"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span className="hidden sm:inline">Om Copilot</span>
+            <span className="text-[9px] px-1 bg-white/20 rounded font-mono">AI</span>
           </button>
 
           <button

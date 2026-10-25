@@ -272,13 +272,120 @@ const DEFAULT_PHYSICAL_DENOMINATIONS: DenominationMap = {
   'coins': 0,
 };
 
+const INITIAL_SAMPLE_TRANSACTIONS: Transaction[] = [
+  {
+    id: 'txn-np-01',
+    timestamp: '2026-10-25T10:45:00',
+    timeFormatted: '10:45 AM',
+    dateFormatted: '25-10-2026',
+    category: 'INDO_NEPAL',
+    indoNepalTransferType: 'ACCOUNT_DEPOSIT',
+    customerName: 'Khadga Bahadur',
+    customerPhone: '9819204821',
+    nepalBeneficiaryName: 'Prakash Thapa',
+    nepalBeneficiaryPhone: '9841294820',
+    nepalBankName: 'Nepal SBI Bank Ltd',
+    nepalAccountNumber: '0180293849102',
+    citizenshipOrId: 'NAGRIKTA-27-01-72-049',
+    referenceId: 'INP9824018210',
+    serviceDetail: 'Nepal A/c: Nepal SBI Bank (0180293849102) · To: Prakash Thapa · Payout: NPR 24,000',
+    amount: 15000,
+    customerFee: 300,
+    totalCollected: 15300,
+    distributorCost: 150,
+    distributorCommission: 150,
+    netProfit: 150,
+    nprAmountEstimated: 24000,
+    paymentMethod: 'CASH',
+    cashAccepted: 15300,
+    cashGivenBack: 0,
+    status: 'SUCCESS',
+  },
+  {
+    id: 'txn-np-02',
+    timestamp: '2026-10-25T11:15:00',
+    timeFormatted: '11:15 AM',
+    dateFormatted: '25-10-2026',
+    category: 'INDO_NEPAL',
+    indoNepalTransferType: 'CASH_PAYOUT',
+    customerName: 'Bhim Prasad Gurung',
+    customerPhone: '9892019482',
+    nepalBeneficiaryName: 'Sita Sharma Gurung',
+    nepalBeneficiaryPhone: '9806192841',
+    nepalPickupAgent: 'Prabhu Money Transfer',
+    nepalDistrict: 'Pokhara, Kaski',
+    citizenshipOrId: 'AADHAAR-8921-4829-1920',
+    referenceId: 'PRABHU-NP-491029',
+    serviceDetail: 'Nepal Cash Payout: Prabhu Money Transfer (Pokhara) · To: Sita Sharma Gurung · Payout: NPR 16,000',
+    amount: 10000,
+    customerFee: 300,
+    totalCollected: 10300,
+    distributorCost: 200,
+    distributorCommission: 100,
+    netProfit: 100,
+    nprAmountEstimated: 16000,
+    paymentMethod: 'CASH',
+    cashAccepted: 10300,
+    cashGivenBack: 0,
+    status: 'SUCCESS',
+  },
+  {
+    id: 'txn-dmt-01',
+    timestamp: '2026-10-25T09:15:00',
+    timeFormatted: '09:15 AM',
+    dateFormatted: '25-10-2026',
+    category: 'MONEY_TRANSFER',
+    portal: 'THE_SIMPLE_PAY',
+    customerName: 'Rahul Verma',
+    customerPhone: '9820144912',
+    referenceId: 'TSP88491024',
+    serviceDetail: 'Transfer via The Simple Pay to Rahul Verma',
+    amount: 8000,
+    customerFee: 80,
+    totalCollected: 8080,
+    distributorCost: 36,
+    distributorCommission: 0,
+    netProfit: 44,
+    paymentMethod: 'CASH',
+    cashAccepted: 8080,
+    cashGivenBack: 0,
+    status: 'SUCCESS',
+  },
+  {
+    id: 'txn-rec-01',
+    timestamp: '2026-10-25T09:40:00',
+    timeFormatted: '09:40 AM',
+    dateFormatted: '25-10-2026',
+    category: 'RECHARGE',
+    operator: 'JIO',
+    customerPhone: '9845112233',
+    referenceId: 'JIO9948102',
+    serviceDetail: 'JIO Recharge (9845112233)',
+    amount: 299,
+    customerFee: 0,
+    totalCollected: 299,
+    distributorCost: 290.03,
+    distributorCommission: 8.97,
+    netProfit: 8.97,
+    paymentMethod: 'UPI',
+    upiAccepted: 299,
+    status: 'SUCCESS',
+  },
+];
+
 export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const shopName = 'OM ENTERPRISES';
   const todayDate = '25-10-2026';
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.TXNS);
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return INITIAL_SAMPLE_TRANSACTIONS;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_SAMPLE_TRANSACTIONS;
+    } catch {
+      return INITIAL_SAMPLE_TRANSACTIONS;
+    }
   });
 
   const [dailyMasterRows, setDailyMasterRows] = useState<DailyMasterRow[]>(() => {
@@ -436,7 +543,7 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       prev.map((row) => {
         if (row.date !== todayDate) return row;
         const updated = { ...row };
-        if (newTxn.category === 'MONEY_TRANSFER') {
+        if (newTxn.category === 'MONEY_TRANSFER' || newTxn.category === 'INDO_NEPAL') {
           updated.moneySales += newTxn.amount;
         } else if (newTxn.category === 'RECHARGE') {
           updated.shreeDemo += newTxn.amount;

@@ -22,6 +22,7 @@ import {
   Building2,
   Cpu,
   QrCode,
+  Globe,
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -72,52 +73,60 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     text: string;
   }[] = [
     {
+      category: 'MONEY_TRANSFER',
+      title: 'Money Transfer (DMT)',
+      sub: 'Go Payments, TSP, VD Pays',
+      icon: <Send className="w-5 h-5" />,
+      bg: 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 border-blue-200 dark:border-blue-900/60 dark:text-blue-300',
+      text: 'text-blue-800 dark:text-blue-200',
+    },
+    {
+      category: 'INDO_NEPAL',
+      title: 'Indo-Nepal Remittance 🇳🇵',
+      sub: 'Bank A/c (+₹150) · Cash (+₹100) | Fee ₹300',
+      icon: <Globe className="w-5 h-5" />,
+      bg: 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 border-rose-200 dark:border-rose-900/60 dark:text-rose-300',
+      text: 'text-rose-800 dark:text-rose-200',
+    },
+    {
       category: 'RECHARGE',
       title: 'Mobile Recharge',
       sub: 'Jio, Airtel, VI, BSNL, TataPlay',
       icon: <Zap className="w-5 h-5" />,
-      bg: 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 border-amber-200',
-      text: 'text-amber-800',
-    },
-    {
-      category: 'MONEY_TRANSFER',
-      title: 'Money Transfer',
-      sub: 'Go Payments, TSP, VD Pays',
-      icon: <Send className="w-5 h-5" />,
-      bg: 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 border-blue-200',
-      text: 'text-blue-800',
+      bg: 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 border-amber-200 dark:border-amber-900/60 dark:text-amber-300',
+      text: 'text-amber-800 dark:text-amber-200',
     },
     {
       category: 'CMS_DEPOSIT',
       title: 'Zomato / Swiggy CMS',
       sub: 'Rider cash collection deposit',
       icon: <Bike className="w-5 h-5" />,
-      bg: 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-700 border-orange-200',
-      text: 'text-orange-800',
+      bg: 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-700 border-orange-200 dark:border-orange-900/60 dark:text-orange-300',
+      text: 'text-orange-800 dark:text-orange-200',
     },
     {
       category: 'AEPS',
       title: 'AEPS Cash Banking',
       sub: 'Aadhaar biometric withdrawal',
       icon: <Fingerprint className="w-5 h-5" />,
-      bg: 'bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 border-cyan-200',
-      text: 'text-cyan-800',
+      bg: 'bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 border-cyan-200 dark:border-cyan-900/60 dark:text-cyan-300',
+      text: 'text-cyan-800 dark:text-cyan-200',
     },
     {
       category: 'BBPS_BILL',
       title: 'BBPS Utility Bill',
       sub: 'Electricity, Water, Gas, Fastag',
       icon: <FileText className="w-5 h-5" />,
-      bg: 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border-emerald-200',
-      text: 'text-emerald-800',
+      bg: 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 border-emerald-200 dark:border-emerald-900/60 dark:text-emerald-300',
+      text: 'text-emerald-800 dark:text-emerald-200',
     },
     {
       category: 'ACCESSORIES',
       title: 'Accessories Sale',
       sub: 'Cables, chargers, tempered glass',
       icon: <Smartphone className="w-5 h-5" />,
-      bg: 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border-purple-200',
-      text: 'text-purple-800',
+      bg: 'bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border-purple-200 dark:border-purple-900/60 dark:text-purple-300',
+      text: 'text-purple-800 dark:text-purple-200',
     },
   ];
 
@@ -297,7 +306,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </h2>
           <span className="text-xs text-slate-500">Click to record instant transaction</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
           {quickActions.map((action) => (
             <button
               key={action.category}
@@ -545,10 +554,23 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       {txn.timeFormatted}
                     </td>
                     <td className="py-2.5 px-3">
-                      <span className="font-semibold text-slate-900 dark:text-white block">{txn.category.replace(/_/g, ' ')}</span>
-                      <span className="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium">
-                        {txn.sourcePortal || txn.portal?.replace(/_/g, ' ') || txn.operator}
-                      </span>
+                      {txn.category === 'INDO_NEPAL' ? (
+                        <div>
+                          <span className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                            <span>🇳🇵</span> Indo-Nepal Remittance
+                          </span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 inline-block mt-0.5">
+                            {txn.indoNepalTransferType === 'ACCOUNT_DEPOSIT' ? 'Bank A/c (+₹150)' : 'Cash Pickup (+₹100)'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-semibold text-slate-900 dark:text-white block">{txn.category.replace(/_/g, ' ')}</span>
+                          <span className="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium">
+                            {txn.sourcePortal || txn.portal?.replace(/_/g, ' ') || txn.operator}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-2.5 px-3">
                       <span className="text-slate-800 dark:text-slate-200 font-medium block">

@@ -1,26 +1,41 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useShop } from '../../context/ShopContext';
 import { formatIndianCurrency } from '../../utils/calculations';
 import {
   TrendingUp,
-  PieChart,
   BarChart3,
   Wallet,
   CheckCircle2,
-  DollarSign,
-  Zap,
+  PieChart,
   Send,
   Smartphone,
-  FileText,
-  Bike,
+  ShieldCheck,
+  Building2,
+  Calendar,
+  Layers,
+  ArrowUpRight,
+  Sparkles,
 } from 'lucide-react';
 
 export const AnalyticsTab: React.FC = () => {
-  const { transactions, dailyMasterRows, todayDate, totalPhysicalCash, expectedBookCash } = useShop();
+  const {
+    transactions,
+    dailyMasterRows,
+    todayDate,
+    totalPhysicalCash,
+    expectedBookCash,
+    distributorPayments,
+    moneyTransferSettledTotal,
+    moneyTransferPendingTotal,
+    accessoriesSettledTotal,
+    accessoriesPendingTotal,
+  } = useShop();
 
-  // Aggregate profits by category across all logged transactions
+  const [timeRange, setTimeRange] = useState<'7' | '14' | 'ALL'>('14');
+  const [hoveredTrendPoint, setHoveredTrendPoint] = useState<any | null>(null);
+
+  // 1. Profit by Service Category
   const categoryStats: Record<string, { totalAmount: number; totalProfit: number; count: number }> = {};
-
   transactions.forEach((t) => {
     if (!categoryStats[t.category]) {
       categoryStats[t.category] = { totalAmount: 0, totalProfit: 0, count: 0 };
@@ -33,7 +48,7 @@ export const AnalyticsTab: React.FC = () => {
   const categoryEntries = Object.entries(categoryStats).sort((a, b) => b[1].totalProfit - a[1].totalProfit);
   const totalAllProfit = categoryEntries.reduce((acc, [, v]) => acc + v.totalProfit, 0);
 
-  // Cash vs Digital volume
+  // 2. Cash vs Digital volume
   let cashVolume = 0;
   let upiVolume = 0;
   transactions.forEach((t) => {
@@ -48,74 +63,298 @@ export const AnalyticsTab: React.FC = () => {
   const cashPct = Math.round((cashVolume / totalPaymentVol) * 100);
   const upiPct = 100 - cashPct;
 
-  // 14-day profit trend
-  const trendRows = dailyMasterRows.slice(-14);
-  const maxProfit = Math.max(...trendRows.map((r) => Math.abs(r.profitOrLoss)), 5000);
+  // 3. Multi-Day Profit Trend from Master Excel Rows
+  const trendRows = useMemo(() => {
+    if (timeRange === '7') return dailyMasterRows.slice(-7);
+    if (timeRange === '14') return dailyMasterRows.slice(-14);
+    return dailyMasterRows;
+  }, [dailyMasterRows, timeRange]);
+
+  const maxDailyProfit = Math.max(...trendRows.map((r) => r.profitOrLoss), 5000);
+  const minDailyProfit = Math.min(...trendRows.map((r) => r.profitOrLoss), 0);
+  const avgDailyProfit = Math.round(
+    trendRows.reduce((acc, r) => acc + r.profitOrLoss, 0) / (trendRows.length || 1)
+  );
+
+  // 4. Indo-Nepal Remittance Specific Analytics
+  const indoNepalTxns = transactions.filter((t) => t.category === 'INDO_NEPAL');
+  const indoNepalAccountCount = indoNepalTxns.filter((t) => t.indoNepalTransferType === 'ACCOUNT_DEPOSIT').length;
+  const indoNepalCashCount = indoNepalTxns.filter((t) => t.indoNepalTransferType === 'CASH_PAYOUT').length;
+  const indoNepalTotalInr = indoNepalTxns.reduce((acc, t) => acc + (t.amount || 0), 0);
+  const indoNepalTotalNpr = indoNepalTxns.reduce(
+    (acc, t) => acc + (t.nprAmountEstimated || (t.amount || 0) * 1.6),
+    0
+  );
+  const indoNepalProfit = indoNepalTxns.reduce((acc, t) => acc + (t.netProfit || 0), 0);
+
+  // 5. DMT Portal Distribution
+  const portalStats: Record<string, { count: number; volume: number }> = {
+    'GO_PAYMENTS': { count: 0, volume: 0 },
+    'THE_SIMPLE_PAY': { count: 0, volume: 0 },
+    'VD_PAYS': { count: 0, volume: 0 },
+    'AIRTEL_CMS': { count: 0, volume: 0 },
+    'AIRPAY': { count: 0, volume: 0 },
+    'ONE_STOP': { count: 0, volume: 0 },
+  };
+
+  transactions.forEach((t) => {
+    if (t.portal && portalStats[t.portal]) {
+      portalStats[t.portal].count += 1;
+      portalStats[t.portal].volume += t.amount;
+    }
+  });
+
+  const totalDmtVol = Object.values(portalStats).reduce((acc, p) => acc + p.volume, 0) || 1;
+
+  // 6. Distributor Settlement Health
+  const totalDistPending = moneyTransferPendingTotal + accessoriesPendingTotal;
+  const totalDistSettled = moneyTransferSettledTotal + accessoriesSettledTotal;
+  const totalDistAll = totalDistPending + totalDistSettled || 1;
+  const settledRatio = Math.round((totalDistSettled / totalDistAll) * 100);
+
+  // SVG Chart Dimensions
+  const svgWidth = 800;
+  const svgHeight = 220;
+  const paddingX = 40;
+  const paddingY = 30;
+  const chartW = svgWidth - paddingX * 2;
+  const chartH = svgHeight - paddingY * 2;
+
+  // Generate trend line points
+  const points = trendRows.map((r, i) => {
+    const x = paddingX + (i / Math.max(1, trendRows.length - 1)) * chartW;
+    const normalized = (r.profitOrLoss - minDailyProfit) / Math.max(1, maxDailyProfit - minDailyProfit);
+    const y = svgHeight - paddingY - normalized * chartH;
+    return { x, y, data: r };
+  });
+
+  const pathD = points.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '');
+  const areaD = points.length
+    ? `${pathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`
+    : '';
 
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            Retail Shop Financial Performance & Profit Analytics
-          </h2>
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+              Financial Intelligence & Statistical Graphs
+            </h2>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Real-time analytics across all 8 integrated gateways, Indo-Nepal remittance margins, LAPU channels, and distributor payables
+          </p>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-          Comprehensive breakdown of revenue streams, profit margins per service, cash flow waterfall, and digital payments
-        </p>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300">
+            <button
+              onClick={() => setTimeRange('7')}
+              className={`px-3 py-1 rounded-lg transition-colors ${
+                timeRange === '7' ? 'bg-white dark:bg-slate-900 text-indigo-600 font-bold shadow-2xs' : ''
+              }`}
+            >
+              7 Days
+            </button>
+            <button
+              onClick={() => setTimeRange('14')}
+              className={`px-3 py-1 rounded-lg transition-colors ${
+                timeRange === '14' ? 'bg-white dark:bg-slate-900 text-indigo-600 font-bold shadow-2xs' : ''
+              }`}
+            >
+              14 Days
+            </button>
+            <button
+              onClick={() => setTimeRange('ALL')}
+              className={`px-3 py-1 rounded-lg transition-colors ${
+                timeRange === 'ALL' ? 'bg-white dark:bg-slate-900 text-indigo-600 font-bold shadow-2xs' : ''
+              }`}
+            >
+              Month All ({dailyMasterRows.length}d)
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Grid: Service Profit Contributions & Cash/UPI Mix */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Service Profit Matrix */}
-        <div className="lg:col-span-2 p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                Net Profit Contribution by Service Category
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Track which service brings the highest net earnings to your shop
-              </p>
+      {/* Visual Chart 1: Interactive Daily Profit Trend Area Chart */}
+      <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              Daily Net Profit Trend (Excel Daily Master Sheet)
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Interactive timeline from Excel master daybook showing daily net retained margin
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs font-mono">
+            <span className="text-slate-500 dark:text-slate-400">
+              Daily Avg: <strong className="text-slate-900 dark:text-slate-100">{formatIndianCurrency(avgDailyProfit)}</strong>
+            </span>
+            <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+              Peak Day: {formatIndianCurrency(maxDailyProfit)}
+            </span>
+          </div>
+        </div>
+
+        {/* SVG Area Chart */}
+        <div className="relative w-full overflow-hidden">
+          <svg
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            className="w-full h-56 sm:h-64 overflow-visible"
+          >
+            <defs>
+              <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
+
+            {/* Grid lines */}
+            <line
+              x1={paddingX}
+              y1={paddingY}
+              x2={svgWidth - paddingX}
+              y2={paddingY}
+              stroke="currentColor"
+              strokeDasharray="4 4"
+              className="text-slate-200 dark:text-slate-800"
+            />
+            <line
+              x1={paddingX}
+              y1={paddingY + chartH / 2}
+              x2={svgWidth - paddingX}
+              y2={paddingY + chartH / 2}
+              stroke="currentColor"
+              strokeDasharray="4 4"
+              className="text-slate-200 dark:text-slate-800"
+            />
+            <line
+              x1={paddingX}
+              y1={svgHeight - paddingY}
+              x2={svgWidth - paddingX}
+              y2={svgHeight - paddingY}
+              stroke="currentColor"
+              className="text-slate-300 dark:text-slate-700"
+            />
+
+            {/* Area fill */}
+            {areaD && <path d={areaD} fill="url(#profitGrad)" />}
+
+            {/* Main Trend Line */}
+            {pathD && (
+              <path
+                d={pathD}
+                fill="none"
+                stroke="#6366f1"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+
+            {/* Points & Interactive Tooltips */}
+            {points.map((pt, idx) => {
+              const isHovered = hoveredTrendPoint?.date === pt.data.date;
+              const isPeak = pt.data.profitOrLoss === maxDailyProfit;
+
+              return (
+                <g key={idx}>
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={isHovered ? 6 : isPeak ? 5 : 4}
+                    fill={isPeak ? '#10b981' : '#6366f1'}
+                    stroke="#ffffff"
+                    strokeWidth={isHovered ? 2.5 : 1.5}
+                    className="cursor-pointer transition-all duration-150"
+                    onMouseEnter={() => setHoveredTrendPoint(pt.data)}
+                    onMouseLeave={() => setHoveredTrendPoint(null)}
+                  />
+                  {/* Date labels on X-axis */}
+                  {(trendRows.length <= 14 || idx % 2 === 0) && (
+                    <text
+                      x={pt.x}
+                      y={svgHeight - paddingY + 16}
+                      textAnchor="middle"
+                      className="text-[9px] fill-slate-400 font-mono"
+                    >
+                      {pt.data.date.split('-')[0]}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Hover Tooltip Box */}
+          {hoveredTrendPoint && (
+            <div className="absolute top-2 right-4 p-3 bg-slate-900/90 text-white rounded-xl shadow-lg border border-slate-700 text-xs font-mono space-y-1 backdrop-blur-xs">
+              <div className="font-bold font-sans text-indigo-300">
+                Date: {hoveredTrendPoint.date}
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-400">Net Profit:</span>
+                <span className="font-bold text-emerald-400">
+                  +{formatIndianCurrency(hoveredTrendPoint.profitOrLoss)}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-400">Total Inflow:</span>
+                <span>{formatIndianCurrency(hoveredTrendPoint.totalBusiness)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-400">Closing Cash:</span>
+                <span>{formatIndianCurrency(hoveredTrendPoint.closingCash)}</span>
+              </div>
             </div>
-            <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/40 px-2.5 py-1 rounded-lg">
-              Total Recorded Profit: {formatIndianCurrency(totalAllProfit)}
+          )}
+        </div>
+      </div>
+
+      {/* Grid: Service Breakdown, Indo-Nepal Spotlight, and Payment Modes */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Service Category Profit Contribution */}
+        <div className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <PieChart className="w-4 h-4 text-indigo-500" />
+              Category Profit Margin
+            </h3>
+            <span className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-400">
+              +{formatIndianCurrency(totalAllProfit)}
             </span>
           </div>
 
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3">
             {categoryEntries.map(([cat, stats]) => {
               const profitShare = totalAllProfit > 0 ? Math.round((stats.totalProfit / totalAllProfit) * 100) : 0;
               const marginPct = stats.totalAmount > 0 ? ((stats.totalProfit / stats.totalAmount) * 100).toFixed(1) : '0';
 
               return (
-                <div key={cat} className="p-3 bg-slate-50/70 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700/60">
-                  <div className="flex items-center justify-between text-xs mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{cat.replace(/_/g, ' ')}</span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400">({stats.count} transactions)</span>
-                    </div>
-                    <div className="flex items-center gap-3 font-mono">
-                      <span className="text-slate-500 dark:text-slate-400 text-[11px]">Vol: {formatIndianCurrency(stats.totalAmount)}</span>
-                      <span className="font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                        +{formatIndianCurrency(stats.totalProfit)}
-                      </span>
-                    </div>
+                <div key={cat} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {cat === 'INDO_NEPAL' ? '🇳🇵 Indo-Nepal' : cat.replace(/_/g, ' ')}
+                    </span>
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                      +{formatIndianCurrency(stats.totalProfit)} ({profitShare}%)
+                    </span>
                   </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden flex">
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                     <div
                       className="bg-indigo-600 dark:bg-indigo-500 h-full rounded-full transition-all duration-300"
                       style={{ width: `${Math.max(5, profitShare)}%` }}
                     />
                   </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
-                    <span>Profit share: {profitShare}%</span>
-                    <span>Average service margin: {marginPct}%</span>
+                  <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                    <span>{stats.count} txns · Vol: {formatIndianCurrency(stats.totalAmount)}</span>
+                    <span>Margin: {marginPct}%</span>
                   </div>
                 </div>
               );
@@ -123,104 +362,102 @@ export const AnalyticsTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Cash vs UPI Digital Breakdown */}
-        <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">
-              Payment Inflow Distribution
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Ratio of Physical Cash accepted at counter vs Digital QR / UPI
+        {/* Indo-Nepal Remittance Performance Spotlight */}
+        <div className="p-5 bg-linear-to-br from-indigo-950 via-slate-900 to-slate-900 text-white rounded-2xl border border-indigo-900/50 shadow-2xs flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🇳🇵</span>
+                <h3 className="text-sm font-extrabold text-white">Indo-Nepal Remittance</h3>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 font-mono font-bold">
+                1 INR = 1.60 NPR
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Highest per-transaction margin in the shop. Customer charge is fixed at ₹300, delivering maximum net earnings.
             </p>
 
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="font-bold text-slate-800 dark:text-slate-200">Physical Counter Cash</span>
-                  <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{cashPct}% ({formatIndianCurrency(cashVolume)})</span>
-                </div>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full" style={{ width: `${cashPct}%` }} />
-                </div>
+            <div className="grid grid-cols-2 gap-2 pt-2 text-xs font-mono">
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <span className="text-[10px] text-slate-400 block font-sans">Account Deposit</span>
+                <span className="text-emerald-400 font-bold block text-sm">₹150 Net Profit</span>
+                <span className="text-[10px] text-slate-400 block">{indoNepalAccountCount} completed</span>
               </div>
-
-              <div>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="font-bold text-slate-800 dark:text-slate-200">UPI / QR Payment</span>
-                  <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{upiPct}% ({formatIndianCurrency(upiVolume)})</span>
-                </div>
-                <div className="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden">
-                  <div className="bg-blue-600 h-full rounded-full" style={{ width: `${upiPct}%` }} />
-                </div>
+              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                <span className="text-[10px] text-slate-400 block font-sans">Cash Payout</span>
+                <span className="text-amber-400 font-bold block text-sm">₹100 Net Profit</span>
+                <span className="text-[10px] text-slate-400 block">{indoNepalCashCount} completed</span>
               </div>
+            </div>
 
-              {/* Cash Management Insight */}
-              <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-lg border border-indigo-100 dark:border-indigo-900/50 text-xs text-indigo-900 dark:text-indigo-200 mt-4">
-                <span className="font-bold block mb-1">💡 Retail Cash Flow Tip:</span>
-                Cash received from DMT & CMS customers is seamlessly recirculated for AEPS withdrawals and cash handovers to distributors, reducing bank cash-deposit trips!
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-1 font-mono text-xs">
+              <div className="flex justify-between text-slate-300">
+                <span>Total Remitted:</span>
+                <span>{formatIndianCurrency(indoNepalTotalInr)}</span>
+              </div>
+              <div className="flex justify-between text-emerald-400 font-bold">
+                <span>Disbursed in Nepal:</span>
+                <span>NPR {indoNepalTotalNpr.toLocaleString('en-IN')}</span>
               </div>
             </div>
           </div>
 
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-4 flex items-center justify-between text-xs">
-            <span className="text-slate-500 dark:text-slate-400">Reconciliation:</span>
-            <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Fully Balanced
-            </span>
+          <div className="pt-3 border-t border-white/10 mt-3 flex items-center justify-between text-xs font-mono">
+            <span className="text-slate-400 font-sans">Total Indo-Nepal Income:</span>
+            <span className="text-emerald-400 font-bold text-sm">+{formatIndianCurrency(indoNepalProfit)}</span>
           </div>
         </div>
-      </div>
 
-      {/* Daily Cash Flow Waterfall Desk */}
-      <div className="p-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-1">
-          Daily Cash Flow Waterfall & Drawer Settlement (Today)
-        </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-          Complete mathematical balance from morning opening cash to night closing cash
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-mono">
-          <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
-            <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-sans">01. Morning Opening Cash</span>
-            <span className="text-base font-extrabold text-slate-900 dark:text-slate-100 block mt-1 tabular-nums">
-              ₹70,660
-            </span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans block mt-0.5">Safe opening verified</span>
+        {/* DMT Portal Volume Share */}
+        <div className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+              <Building2 className="w-4 h-4 text-indigo-500" />
+              DMT Portal Volume Share
+            </h3>
+            <span className="text-xs text-slate-500 font-mono">6 Portals Active</span>
           </div>
 
-          <div className="p-3.5 rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/30">
-            <span className="text-emerald-800 dark:text-emerald-300 block text-[11px] font-sans font-bold">+ 02. Total Cash Collections</span>
-            <span className="text-base font-extrabold text-emerald-700 dark:text-emerald-400 block mt-1 tabular-nums">
-              +₹1,12,890
-            </span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-500 font-sans block mt-0.5">DMT, CMS, Accessories, Jama</span>
+          <div className="space-y-2.5 text-xs">
+            {Object.entries(portalStats).map(([portal, stats]) => {
+              const pct = Math.round((stats.volume / totalDmtVol) * 100) || 0;
+              const portalName = portal.replace(/_/g, ' ');
+
+              return (
+                <div key={portal} className="space-y-1">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{portalName}</span>
+                    <span className="font-mono text-slate-600 dark:text-slate-400">
+                      {formatIndianCurrency(stats.volume)} ({pct}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-indigo-500 h-full rounded-full"
+                      style={{ width: `${Math.max(3, pct)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          <div className="p-3.5 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/30">
-            <span className="text-rose-800 dark:text-rose-300 block text-[11px] font-sans font-bold">- 03. Paid to Distributors</span>
-            <span className="text-base font-extrabold text-rose-700 dark:text-rose-400 block mt-1 tabular-nums">
-              -₹80,000
-            </span>
-            <span className="text-[10px] text-rose-600 dark:text-rose-500 font-sans block mt-0.5">Money transfer topups</span>
-          </div>
-
-          <div className="p-3.5 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/30">
-            <span className="text-rose-800 dark:text-rose-300 block text-[11px] font-sans font-bold">- 04. AEPS & Debits</span>
-            <span className="text-base font-extrabold text-rose-700 dark:text-rose-400 block mt-1 tabular-nums">
-              -₹5,100
-            </span>
-            <span className="text-[10px] text-rose-600 dark:text-rose-500 font-sans block mt-0.5">Cash given to customer & chai</span>
-          </div>
-
-          <div className="p-3.5 rounded-lg border border-indigo-300 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-950/50">
-            <span className="text-indigo-950 dark:text-indigo-200 block text-[11px] font-sans font-extrabold">= 05. Night Closing Cash</span>
-            <span className="text-base font-extrabold text-indigo-900 dark:text-indigo-300 block mt-1 tabular-nums">
-              {formatIndianCurrency(totalPhysicalCash)}
-            </span>
-            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-sans font-bold block mt-0.5 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 inline" /> Zero Discrepancy
-            </span>
+          {/* Distributor Clearing Health Meter */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="font-bold text-slate-800 dark:text-slate-200">Distributor Dues Cleared</span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{settledRatio}% Settled</span>
+            </div>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden flex">
+              <div className="bg-emerald-500 h-full" style={{ width: `${settledRatio}%` }} />
+              <div className="bg-amber-500 h-full" style={{ width: `${100 - settledRatio}%` }} />
+            </div>
+            <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+              <span>Settled: {formatIndianCurrency(totalDistSettled)}</span>
+              <span className="text-amber-600 dark:text-amber-400">Pending: {formatIndianCurrency(totalDistPending)}</span>
+            </div>
           </div>
         </div>
       </div>

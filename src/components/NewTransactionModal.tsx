@@ -6,12 +6,15 @@ import {
   TelecomOperator,
   PaymentMethod,
   DenominationMap,
+  IndoNepalTransferType,
 } from '../types';
 import {
   DENOMINATION_KEYS,
   DENOMINATION_VALUES,
   estimateTransactionProfit,
   formatIndianCurrency,
+  calculateNprEquivalent,
+  formatNprCurrency,
 } from '../utils/calculations';
 import {
   X,
@@ -27,6 +30,9 @@ import {
   ArrowUpRight,
   Calculator,
   Check,
+  Globe,
+  Building,
+  Coins,
 } from 'lucide-react';
 
 interface NewTransactionModalProps {
@@ -48,6 +54,16 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const [customerName, setCustomerName] = useState<string>('');
   const [serviceDetail, setServiceDetail] = useState<string>('');
   const [referenceId, setReferenceId] = useState<string>('');
+
+  // Indo-Nepal specific state
+  const [indoNepalType, setIndoNepalType] = useState<IndoNepalTransferType>('ACCOUNT_DEPOSIT');
+  const [nepalBeneficiaryName, setNepalBeneficiaryName] = useState<string>('');
+  const [nepalBeneficiaryPhone, setNepalBeneficiaryPhone] = useState<string>('');
+  const [nepalBankName, setNepalBankName] = useState<string>('Nepal SBI Bank Ltd');
+  const [nepalAccountNumber, setNepalAccountNumber] = useState<string>('');
+  const [nepalPickupAgent, setNepalPickupAgent] = useState<string>('Prabhu Money Transfer');
+  const [nepalDistrict, setNepalDistrict] = useState<string>('Kathmandu');
+  const [citizenshipOrId, setCitizenshipOrId] = useState<string>('');
 
   // Portals & Operators
   const [portal, setPortal] = useState<DmtPortal>('GO_PAYMENTS');
@@ -80,11 +96,11 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
     }
   }, [isOpen, defaultCategory]);
 
-  // Recalculate profit estimate when amount, category, portal, or operator changes
+  // Recalculate profit estimate when amount, category, portal, operator or Indo-Nepal type changes
   useEffect(() => {
     const numAmount = parseFloat(amount) || 0;
     if (!customProfitOverride) {
-      const estimate = estimateTransactionProfit(category, numAmount, portal, operator);
+      const estimate = estimateTransactionProfit(category, numAmount, portal, operator, indoNepalType);
       setCustomerFee(estimate.customerFee);
       setDistributorCost(estimate.distributorCost);
       setNetProfit(estimate.netProfit);
@@ -96,7 +112,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
         setCashGivenBack('0');
       }
     }
-  }, [amount, category, portal, operator, paymentMethod, customProfitOverride]);
+  }, [amount, category, portal, operator, paymentMethod, customProfitOverride, indoNepalType]);
 
   if (!isOpen) return null;
 
@@ -106,7 +122,8 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   const totalCollected = numAmount + (customerFee || 0);
 
   const categories: { key: TransactionCategory; label: string; icon: React.ReactNode; color: string }[] = [
-    { key: 'MONEY_TRANSFER', label: 'Money Transfer (DMT)', icon: <Send className="w-4 h-4" />, color: 'text-blue-600' },
+    { key: 'MONEY_TRANSFER', label: 'Domestic DMT', icon: <Send className="w-4 h-4" />, color: 'text-blue-600' },
+    { key: 'INDO_NEPAL', label: 'Indo-Nepal 🇳🇵', icon: <Globe className="w-4 h-4" />, color: 'text-rose-600' },
     { key: 'RECHARGE', label: 'Mobile & DTH Recharge', icon: <Zap className="w-4 h-4" />, color: 'text-amber-600' },
     { key: 'ACCESSORIES', label: 'Retail Accessories', icon: <Smartphone className="w-4 h-4" />, color: 'text-purple-600' },
     { key: 'BBPS_BILL', label: 'BBPS Bill Pay', icon: <FileText className="w-4 h-4" />, color: 'text-emerald-600' },
@@ -144,7 +161,13 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
     let finalServiceDetail = serviceDetail;
     if (!finalServiceDetail) {
-      if (category === 'RECHARGE') {
+      if (category === 'INDO_NEPAL') {
+        const isAccount = indoNepalType === 'ACCOUNT_DEPOSIT';
+        const payoutNpr = calculateNprEquivalent(numAmount);
+        finalServiceDetail = isAccount
+          ? `Nepal A/c: ${nepalBankName} (${nepalAccountNumber || 'A/c N/A'}) · To: ${nepalBeneficiaryName || customerName || 'Recipient'} · Payout: NPR ${payoutNpr.toLocaleString('en-IN')}`
+          : `Nepal Cash Payout: ${nepalPickupAgent} (${nepalDistrict}) · To: ${nepalBeneficiaryName || customerName || 'Recipient'} · Payout: NPR ${payoutNpr.toLocaleString('en-IN')}`;
+      } else if (category === 'RECHARGE') {
         finalServiceDetail = `${operator} Recharge ${customerPhone ? `(${customerPhone})` : ''}`;
       } else if (category === 'MONEY_TRANSFER') {
         finalServiceDetail = `Transfer via ${portal.replace(/_/g, ' ')} ${customerName ? `to ${customerName}` : ''}`;
@@ -177,8 +200,19 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
       customerFee,
       totalCollected: category === 'EXTERNAL_DEBIT' ? 0 : totalCollected,
       distributorCost,
-      distributorCommission: category === 'CMS_DEPOSIT' || category === 'AEPS' ? netProfit : 0,
+      distributorCommission:
+        category === 'CMS_DEPOSIT' || category === 'AEPS' || category === 'INDO_NEPAL' ? netProfit : 0,
       netProfit,
+      // Indo-Nepal remittance metadata
+      indoNepalTransferType: category === 'INDO_NEPAL' ? indoNepalType : undefined,
+      nepalBeneficiaryName: category === 'INDO_NEPAL' ? (nepalBeneficiaryName || customerName) : undefined,
+      nepalBeneficiaryPhone: category === 'INDO_NEPAL' ? (nepalBeneficiaryPhone || customerPhone) : undefined,
+      nepalBankName: category === 'INDO_NEPAL' && indoNepalType === 'ACCOUNT_DEPOSIT' ? nepalBankName : undefined,
+      nepalAccountNumber: category === 'INDO_NEPAL' && indoNepalType === 'ACCOUNT_DEPOSIT' ? nepalAccountNumber : undefined,
+      nepalPickupAgent: category === 'INDO_NEPAL' && indoNepalType === 'CASH_PAYOUT' ? nepalPickupAgent : undefined,
+      nepalDistrict: category === 'INDO_NEPAL' ? nepalDistrict : undefined,
+      citizenshipOrId: category === 'INDO_NEPAL' ? citizenshipOrId : undefined,
+      nprAmountEstimated: category === 'INDO_NEPAL' ? calculateNprEquivalent(numAmount) : undefined,
       paymentMethod,
       cashAccepted: paymentMethod === 'CASH' || paymentMethod === 'SPLIT' ? numCashAccepted : 0,
       cashGivenBack: numCashGiven,
@@ -221,7 +255,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
             <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
               Select Transaction Category
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
               {categories.map((cat) => (
                 <button
                   key={cat.key}
@@ -233,7 +267,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                   className={`flex items-center gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
                     category === cat.key
                       ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 shadow-xs ring-1 ring-indigo-500'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:border-slate-700'
                   }`}
                 >
                   <span className={cat.color}>{cat.icon}</span>
@@ -245,6 +279,221 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
 
           {/* Dynamic Category Specific Controls */}
           <div className="p-4 bg-slate-50/70 dark:bg-slate-800/40 rounded-lg border border-slate-200 dark:border-slate-800 space-y-4">
+            {/* INDO-NEPAL REMITTANCE SLOT */}
+            {category === 'INDO_NEPAL' && (
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <span className="text-base">🇳🇵</span> Indo-Nepal Remittance Mode (Cross-Border Transfer)
+                    </label>
+                    <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 px-2 py-0.5 rounded">
+                      Customer Charge: Flat ₹300
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Account Deposit Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIndoNepalType('ACCOUNT_DEPOSIT');
+                        setCustomProfitOverride(false);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        indoNepalType === 'ACCOUNT_DEPOSIT'
+                          ? 'border-rose-500 bg-rose-50/90 dark:bg-rose-950/40 text-slate-900 dark:text-slate-100 ring-2 ring-rose-500 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs flex items-center gap-1.5">
+                          <Building className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                          Account Deposit (Nepal Bank)
+                        </span>
+                        <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 rounded font-mono font-bold text-[11px]">
+                          +₹150 Profit
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Direct credit into beneficiary bank account in Nepal
+                      </p>
+                      <div className="mt-2 text-[10px] text-slate-600 dark:text-slate-400 font-mono">
+                        Customer Charge: ₹300 | Distributor Cost: ₹150 | <strong className="text-emerald-600 dark:text-emerald-400">Your Earning: ₹150</strong>
+                      </div>
+                    </button>
+
+                    {/* Cash Payout Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIndoNepalType('CASH_PAYOUT');
+                        setCustomProfitOverride(false);
+                      }}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        indoNepalType === 'CASH_PAYOUT'
+                          ? 'border-rose-500 bg-rose-50/90 dark:bg-rose-950/40 text-slate-900 dark:text-slate-100 ring-2 ring-rose-500 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs flex items-center gap-1.5">
+                          <Coins className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                          Cash Payout (Counter Pickup)
+                        </span>
+                        <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 rounded font-mono font-bold text-[11px]">
+                          +₹100 Profit
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                        Instant cash pickup at Prabhu, IME, or City Express counters in Nepal
+                      </p>
+                      <div className="mt-2 text-[10px] text-slate-600 dark:text-slate-400 font-mono">
+                        Customer Charge: ₹300 | Distributor Cost: ₹200 | <strong className="text-emerald-600 dark:text-emerald-400">Your Earning: ₹100</strong>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Nepal Remittance Live Exchange Peg Card */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-gradient-to-r from-rose-50 via-amber-50/60 to-emerald-50 dark:from-rose-950/30 dark:via-slate-800/60 dark:to-emerald-950/30 p-3 rounded-lg border border-rose-200 dark:border-rose-900/40 text-xs gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🇳🇵</span>
+                    <div>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 block">
+                        Official Exchange Peg: 1 INR = 1.60 NPR
+                      </span>
+                      <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                        Customer pays: {formatIndianCurrency(numAmount)} + ₹300 fee = <strong className="text-slate-900 dark:text-slate-100 font-mono">{formatIndianCurrency(totalCollected)}</strong>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">Payout to Beneficiary in Nepal:</span>
+                    <span className="font-mono font-extrabold text-sm text-emerald-700 dark:text-emerald-400">
+                      {formatNprCurrency(calculateNprEquivalent(numAmount))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Destination Details */}
+                {indoNepalType === 'ACCOUNT_DEPOSIT' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Nepal Bank Name *
+                      </label>
+                      <select
+                        value={nepalBankName}
+                        onChange={(e) => setNepalBankName(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                      >
+                        <option value="Nepal SBI Bank Ltd">Nepal SBI Bank Ltd (State Bank of India JV)</option>
+                        <option value="Everest Bank Ltd">Everest Bank Ltd (PNB JV)</option>
+                        <option value="Global IME Bank Ltd">Global IME Bank Ltd</option>
+                        <option value="Nabil Bank Ltd">Nabil Bank Ltd</option>
+                        <option value="NIC Asia Bank Ltd">NIC Asia Bank Ltd</option>
+                        <option value="Rastriya Banijya Bank">Rastriya Banijya Bank (RBB)</option>
+                        <option value="Nepal Investment Mega Bank">Nepal Investment Mega Bank (NIMB)</option>
+                        <option value="Prabhu Bank Ltd">Prabhu Bank Ltd</option>
+                        <option value="Himalayan Bank Ltd">Himalayan Bank Ltd</option>
+                        <option value="Sanima Bank Ltd">Sanima Bank Ltd</option>
+                        <option value="Other Nepal Bank">Other Licensed Commercial Bank</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Nepal Bank Account Number *
+                      </label>
+                      <input
+                        type="text"
+                        value={nepalAccountNumber}
+                        onChange={(e) => setNepalAccountNumber(e.target.value)}
+                        placeholder="e.g. 0180293849102"
+                        className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Cash Pickup Partner Agency *
+                      </label>
+                      <select
+                        value={nepalPickupAgent}
+                        onChange={(e) => setNepalPickupAgent(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                      >
+                        <option value="Prabhu Money Transfer">Prabhu Money Transfer (All Counters)</option>
+                        <option value="IME Forex (IME Ltd)">IME Forex (IME Limited / IME Pay)</option>
+                        <option value="City Express Money Transfer">City Express Money Transfer</option>
+                        <option value="Nepal SBI Express Remit">Nepal SBI Express Remit Counters</option>
+                        <option value="Himal Remit">Himal Remit Network</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Nepal Payout District / Counter Location *
+                      </label>
+                      <input
+                        type="text"
+                        value={nepalDistrict}
+                        onChange={(e) => setNepalDistrict(e.target.value)}
+                        placeholder="e.g. Kathmandu / Pokhara / Birgunj / Butwal"
+                        className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Remittance Fields: Nepal Beneficiary & Remitter ID */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Nepal Beneficiary Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={nepalBeneficiaryName}
+                      onChange={(e) => setNepalBeneficiaryName(e.target.value)}
+                      placeholder="Receiver name in Nepal"
+                      className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Nepal Mobile Number *
+                    </label>
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={nepalBeneficiaryPhone}
+                      onChange={(e) => setNepalBeneficiaryPhone(e.target.value)}
+                      placeholder="Nepal 10-digit (e.g. 9841...)"
+                      className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Sender ID / Nagrikta / Aadhaar
+                    </label>
+                    <input
+                      type="text"
+                      value={citizenshipOrId}
+                      onChange={(e) => setCitizenshipOrId(e.target.value)}
+                      placeholder="Aadhaar / Nagrikta No."
+                      className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {category === 'RECHARGE' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">

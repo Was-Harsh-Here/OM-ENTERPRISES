@@ -1,4 +1,4 @@
-import { DenominationMap, Transaction, TransactionCategory, DmtPortal, TelecomOperator } from '../types';
+import { DenominationMap, Transaction, TransactionCategory, DmtPortal, TelecomOperator, IndoNepalTransferType } from '../types';
 
 export const DENOMINATION_VALUES: { [key in keyof DenominationMap]: number } = {
   '2000': 2000,
@@ -51,6 +51,18 @@ export function formatIndianCurrency(amount: number): string {
   return `${isNegative ? '-' : ''}₹${formatted}`;
 }
 
+// Indo-Nepal Peg: 1 INR = 1.60 NPR (Fixed official exchange rate)
+export const INR_TO_NPR_RATE = 1.60;
+
+export function calculateNprEquivalent(inrAmount: number): number {
+  return Number((inrAmount * INR_TO_NPR_RATE).toFixed(2));
+}
+
+export function formatNprCurrency(amount: number): string {
+  if (isNaN(amount)) return 'NPR 0';
+  return `NPR ${amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+}
+
 export interface DefaultProfitEstimate {
   customerFee: number;
   distributorCost: number;
@@ -62,13 +74,27 @@ export function estimateTransactionProfit(
   category: TransactionCategory,
   amount: number,
   portal?: DmtPortal,
-  operator?: TelecomOperator
+  operator?: TelecomOperator,
+  indoNepalType: IndoNepalTransferType = 'ACCOUNT_DEPOSIT'
 ): DefaultProfitEstimate {
-  if (amount <= 0) {
+  if (amount <= 0 && category !== 'INDO_NEPAL') {
     return { customerFee: 0, distributorCost: 0, distributorCommission: 0, netProfit: 0 };
   }
 
   switch (category) {
+    case 'INDO_NEPAL': {
+      // Indo-Nepal Remittance:
+      // Customer Fee: Flat ₹300 for every transaction
+      // Account Deposit: Retailer gets ₹150 profit / commission
+      // Cash Payout: Retailer gets ₹100 profit / commission
+      const customerFee = 300;
+      const isAccountDeposit = indoNepalType === 'ACCOUNT_DEPOSIT';
+      const netProfit = isAccountDeposit ? 150 : 100;
+      const distributorCommission = netProfit;
+      const distributorCost = customerFee - netProfit; // ₹150 for deposit, ₹200 for cash payout
+      return { customerFee, distributorCost, distributorCommission, netProfit };
+    }
+
     case 'MONEY_TRANSFER': {
       // Standard Retail DMT: 1% charged to customer (min ₹10)
       const customerFee = Math.max(10, Math.round(amount * 0.01));

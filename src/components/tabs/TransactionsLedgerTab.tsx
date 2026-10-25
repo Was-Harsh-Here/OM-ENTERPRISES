@@ -187,6 +187,7 @@ export const TransactionsLedgerTab: React.FC<TransactionsLedgerTabProps> = ({
             >
               <option value="ALL">All Categories</option>
               <option value="MONEY_TRANSFER">Money Transfer (DMT)</option>
+              <option value="INDO_NEPAL">Indo-Nepal Remittance 🇳🇵</option>
               <option value="RECHARGE">Recharge (LAPU)</option>
               <option value="ACCESSORIES">Retail Accessories</option>
               <option value="BBPS_BILL">BBPS Bill Pay</option>
@@ -292,10 +293,23 @@ export const TransactionsLedgerTab: React.FC<TransactionsLedgerTabProps> = ({
 
                     {/* Category & Gateway */}
                     <td className="py-3 px-3.5">
-                      <span className="font-bold text-slate-900 dark:text-slate-100 block">{txn.category.replace(/_/g, ' ')}</span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                        {txn.portal?.replace(/_/g, ' ') || txn.operator || txn.referenceId}
-                      </span>
+                      {txn.category === 'INDO_NEPAL' ? (
+                        <div>
+                          <span className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                            <span>🇳🇵</span> Indo-Nepal
+                          </span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 inline-block mt-0.5">
+                            {txn.indoNepalTransferType === 'ACCOUNT_DEPOSIT' ? 'Bank A/c (+₹150)' : 'Cash Payout (+₹100)'}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="font-bold text-slate-900 dark:text-slate-100 block">{txn.category.replace(/_/g, ' ')}</span>
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                            {txn.portal?.replace(/_/g, ' ') || txn.operator || txn.referenceId}
+                          </span>
+                        </div>
+                      )}
                     </td>
 
                     {/* Customer & Particulars */}
