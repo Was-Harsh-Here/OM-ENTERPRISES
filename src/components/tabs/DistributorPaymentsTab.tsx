@@ -1,6 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useShop } from '../../context/ShopContext';
-import { DistributorPaymentItem, DistributorCategoryType, DistributorPaymentStatus } from '../../types';
+import {
+  DistributorPaymentItem,
+  DistributorCategoryType,
+  DistributorPaymentStatus,
+  DistributorEntryType,
+} from '../../types';
 import { formatIndianCurrency, exportToCsv } from '../../utils/calculations';
 import {
   Building2,
@@ -19,6 +24,10 @@ import {
   Check,
   X,
   Plus,
+  ArrowDownLeft,
+  ArrowUpRight,
+  RefreshCw,
+  Wallet,
 } from 'lucide-react';
 
 export const DistributorPaymentsTab: React.FC = () => {
@@ -32,11 +41,17 @@ export const DistributorPaymentsTab: React.FC = () => {
     moneyTransferPendingTotal,
     accessoriesSettledTotal,
     accessoriesPendingTotal,
+    distributorBalanceReceivedTotal,
     todayDate,
+    currentTime,
+    currentLiveDate,
+    currentDeviceFullDate,
+    lastLedgerRefreshTime,
+    forceRefreshLedger,
   } = useShop();
 
   // Filter state
-  const [activeCategoryTab, setActiveCategoryTab] = useState<'ALL' | DistributorCategoryType>('ALL');
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'ALL' | DistributorCategoryType | 'BALANCE_RECEIVED' | 'PAYMENT_SENT'>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<'ALL' | DistributorPaymentStatus>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -46,6 +61,8 @@ export const DistributorPaymentsTab: React.FC = () => {
 
   // Form fields
   const [formDate, setFormDate] = useState('2026-10-25');
+  const [formEntryType, setFormEntryType] = useState<DistributorEntryType>('PAYMENT_TO_DISTRIBUTOR');
+  const [formTargetPortal, setFormTargetPortal] = useState<string>('VD_PAYS');
   const [formCategory, setFormCategory] = useState<DistributorCategoryType>('MONEY_TRANSFER');
   const [formDistributorName, setFormDistributorName] = useState('Go Payments Pvt Ltd');
   const [formAmount, setFormAmount] = useState('');
@@ -57,10 +74,15 @@ export const DistributorPaymentsTab: React.FC = () => {
 
   const filteredPayments = useMemo(() => {
     return distributorPayments.filter((p) => {
-      // Category filter
-      if (activeCategoryTab !== 'ALL' && p.distributorCategory !== activeCategoryTab) {
+      // Filter by category or entry type
+      if (activeCategoryTab === 'BALANCE_RECEIVED') {
+        if (p.entryType !== 'BALANCE_RECEIVED') return false;
+      } else if (activeCategoryTab === 'PAYMENT_SENT') {
+        if (p.entryType === 'BALANCE_RECEIVED') return false;
+      } else if (activeCategoryTab !== 'ALL' && p.distributorCategory !== activeCategoryTab) {
         return false;
       }
+
       // Status filter
       if (selectedStatus !== 'ALL' && p.status !== selectedStatus) {
         return false;
@@ -72,6 +94,7 @@ export const DistributorPaymentsTab: React.FC = () => {
           p.distributorName.toLowerCase().includes(q) ||
           p.purpose.toLowerCase().includes(q) ||
           p.referenceNumber?.toLowerCase().includes(q) ||
+          p.targetPortalOrOperator?.toLowerCase().includes(q) ||
           p.date.includes(q);
         if (!match) return false;
       }
@@ -79,13 +102,25 @@ export const DistributorPaymentsTab: React.FC = () => {
     });
   }, [distributorPayments, activeCategoryTab, selectedStatus, searchQuery]);
 
-  const openAddModal = (cat?: DistributorCategoryType) => {
+  const openAddModal = (entryType: DistributorEntryType = 'PAYMENT_TO_DISTRIBUTOR', cat?: DistributorCategoryType) => {
     setEditingItem(null);
-    setFormDate('2026-10-25');
-    setFormCategory(cat || (activeCategoryTab !== 'ALL' ? activeCategoryTab : 'MONEY_TRANSFER'));
-    setFormDistributorName(cat === 'RETAIL_ACCESSORIES' ? 'Royal Mobile Accessories' : 'Go Payments Pvt Ltd');
+    setFormDate(new Date().toISOString().split('T')[0]);
+    setFormEntryType(entryType);
+    setFormCategory(cat || (activeCategoryTab === 'RETAIL_ACCESSORIES' ? 'RETAIL_ACCESSORIES' : 'MONEY_TRANSFER'));
+    setFormTargetPortal(entryType === 'BALANCE_RECEIVED' ? 'VD_PAYS' : '');
+    setFormDistributorName(
+      entryType === 'BALANCE_RECEIVED'
+        ? 'VD Pays Solutions'
+        : cat === 'RETAIL_ACCESSORIES'
+        ? 'Royal Mobile Accessories'
+        : 'Go Payments Pvt Ltd'
+    );
     setFormAmount('');
-    setFormPurpose('');
+    setFormPurpose(
+      entryType === 'BALANCE_RECEIVED'
+        ? 'Distributor Float Credit / Top-up Received into VD Pays Wallet'
+        : 'Payment handover for Sunday DMT float settlement'
+    );
     setFormPaymentMode('BANK_NEFT_IMPS');
     setFormStatus('Settled');
     setFormReference(`IMPS${Date.now().toString().slice(-8)}`);
@@ -96,6 +131,8 @@ export const DistributorPaymentsTab: React.FC = () => {
   const openEditModal = (item: DistributorPaymentItem) => {
     setEditingItem(item);
     setFormDate(item.date);
+    setFormEntryType(item.entryType || 'PAYMENT_TO_DISTRIBUTOR');
+    setFormTargetPortal(item.targetPortalOrOperator || 'VD_PAYS');
     setFormCategory(item.distributorCategory);
     setFormDistributorName(item.distributorName);
     setFormAmount(item.amount.toString());
@@ -116,6 +153,8 @@ export const DistributorPaymentsTab: React.FC = () => {
       updateDistributorPaymentItem({
         ...editingItem,
         date: formDate,
+        entryType: formEntryType,
+        targetPortalOrOperator: formEntryType === 'BALANCE_RECEIVED' ? formTargetPortal : undefined,
         distributorCategory: formCategory,
         distributorName: formDistributorName,
         amount: numAmount,
@@ -128,6 +167,8 @@ export const DistributorPaymentsTab: React.FC = () => {
     } else {
       addDistributorPaymentItem({
         date: formDate,
+        entryType: formEntryType,
+        targetPortalOrOperator: formEntryType === 'BALANCE_RECEIVED' ? formTargetPortal : undefined,
         distributorCategory: formCategory,
         distributorName: formDistributorName,
         amount: numAmount,
@@ -179,73 +220,105 @@ export const DistributorPaymentsTab: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              Distributor Payments & Settlement Ledger
+              Distributor Settlements & Balance Top-up Ledger
             </h2>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Track payments made to Money Transfer gateways and Retail Accessories vendors separately to guarantee zero discrepancies in daily cash flow
+            Log both payment handovers to distributors (Outflows) and wallet balance float top-ups received (Inflows)
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Live Device Sync time badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>{currentLiveDate} · <strong className="text-indigo-600 dark:text-indigo-400">{currentTime}</strong></span>
+          </div>
+
+          <button
+            type="button"
+            onClick={forceRefreshLedger}
+            title="Recalculate all formulas now"
+            className="p-1.5 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+
           <button
             type="button"
             onClick={handleExportCsv}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
           >
             <Download className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-            <span>Export Report (.CSV)</span>
+            <span>Export (.CSV)</span>
           </button>
+
+          {/* Dedicated Balance Received Button */}
           <button
             type="button"
-            onClick={() => openAddModal()}
+            onClick={() => openAddModal('BALANCE_RECEIVED')}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-900 dark:text-emerald-100 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:hover:bg-emerald-800/80 border border-emerald-300 dark:border-emerald-700 rounded-lg transition-all shadow-xs"
+          >
+            <ArrowDownLeft className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
+            <span>+ Balance Received (Top-up)</span>
+          </button>
+
+          {/* Payment Handover Button */}
+          <button
+            type="button"
+            onClick={() => openAddModal('PAYMENT_TO_DISTRIBUTOR')}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-lg transition-all shadow-xs"
           >
-            <PlusCircle className="w-4 h-4" />
-            <span>Log Distributor Payment</span>
+            <ArrowUpRight className="w-4 h-4" />
+            <span>+ Log Payment Handover</span>
           </button>
         </div>
       </div>
 
-      {/* Summary KPI Cards: Money Transfer vs Accessories */}
+      {/* Summary KPI Cards: Balance Received vs Payments */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Money Transfer Settled */}
+        {/* Total Balance Received (Inflow) */}
+        <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/50 shadow-2xs">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="font-semibold text-emerald-900 dark:text-emerald-300 uppercase flex items-center gap-1.5">
+              <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              Balance Top-ups Received
+            </span>
+            <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200 bg-emerald-200/80 dark:bg-emerald-900/80 px-2 py-0.5 rounded font-mono">
+              Inflow (+)
+            </span>
+          </div>
+          <div className="text-xl font-bold font-mono text-emerald-950 dark:text-emerald-100 tabular-nums mt-1">
+            {formatIndianCurrency(distributorBalanceReceivedTotal)}
+          </div>
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+            Float credited to VD Pays, Go, TSP wallets
+          </p>
+        </div>
+
+        {/* Money Transfer Settled Payouts */}
         <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
           <div className="flex items-center justify-between text-xs mb-1">
             <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1.5">
               <Send className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               DMT Settled Payouts
             </span>
-            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/40 px-2 py-0.5 rounded">
-              Settled
+            <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/40 px-2 py-0.5 rounded">
+              Outflow (-)
             </span>
           </div>
           <div className="text-xl font-bold font-mono text-slate-900 dark:text-slate-100 tabular-nums mt-1">
             {formatIndianCurrency(moneyTransferSettledTotal)}
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Go Payments, TSP & VD Pays wallets</p>
-        </div>
-
-        {/* Money Transfer Pending */}
-        <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1.5">
-              <Send className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              DMT Pending Verification
-            </span>
-            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/40 px-2 py-0.5 rounded">
-              Pending
-            </span>
-          </div>
-          <div className="text-xl font-bold font-mono text-amber-700 dark:text-amber-400 tabular-nums mt-1">
-            {formatIndianCurrency(moneyTransferPendingTotal)}
-          </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Awaiting balance reflection</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Cash handover & NEFT bank settlements</p>
         </div>
 
         {/* Accessories Settled */}
@@ -265,29 +338,29 @@ export const DistributorPaymentsTab: React.FC = () => {
           <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Cables, adaptors, glass wholesale</p>
         </div>
 
-        {/* Accessories Pending */}
+        {/* Pending Verification */}
         <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
           <div className="flex items-center justify-between text-xs mb-1">
             <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              Accessories Credit Due
+              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              Total Pending Verifications
             </span>
             <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/40 px-2 py-0.5 rounded">
-              Pending Invoice
+              Pending
             </span>
           </div>
           <div className="text-xl font-bold font-mono text-amber-700 dark:text-amber-400 tabular-nums mt-1">
-            {formatIndianCurrency(accessoriesPendingTotal)}
+            {formatIndianCurrency(moneyTransferPendingTotal + accessoriesPendingTotal)}
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Pending vendor invoice receipt</p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Awaiting vendor receipt confirmation</p>
         </div>
       </div>
 
-      {/* Main Filter Tabs: Money Transfer vs Retail Accessories Separately */}
+      {/* Main Filter Tabs: Flow Type & Categories */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Segmented Category Buttons */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
             <button
               type="button"
               onClick={() => setActiveCategoryTab('ALL')}
@@ -297,7 +370,31 @@ export const DistributorPaymentsTab: React.FC = () => {
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
               }`}
             >
-              All Distributor Payments
+              All Records ({distributorPayments.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategoryTab('BALANCE_RECEIVED')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                activeCategoryTab === 'BALANCE_RECEIVED'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+              }`}
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5" />
+              <span>Balance Received (Inflows)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategoryTab('PAYMENT_SENT')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                activeCategoryTab === 'PAYMENT_SENT'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+              }`}
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>Payments Sent (Outflows)</span>
             </button>
             <button
               type="button"
@@ -309,7 +406,7 @@ export const DistributorPaymentsTab: React.FC = () => {
               }`}
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Money Transfer Distributors</span>
+              <span>Money Transfer</span>
             </button>
             <button
               type="button"
@@ -321,25 +418,7 @@ export const DistributorPaymentsTab: React.FC = () => {
               }`}
             >
               <Smartphone className="w-3.5 h-3.5" />
-              <span>Retail Accessories Distributors</span>
-            </button>
-          </div>
-
-          {/* Quick Add For Specific Category */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => openAddModal('MONEY_TRANSFER')}
-              className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors"
-            >
-              + Add DMT Payment
-            </button>
-            <button
-              type="button"
-              onClick={() => openAddModal('RETAIL_ACCESSORIES')}
-              className="px-2.5 py-1 text-[11px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors"
-            >
-              + Add Accessories Payment
+              <span>Accessories</span>
             </button>
           </div>
         </div>
@@ -352,7 +431,7 @@ export const DistributorPaymentsTab: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search distributor name, purpose, UTR reference..."
+              placeholder="Search distributor name, target wallet (VD Pays, Go, TSP), purpose, UTR reference..."
               className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -373,17 +452,17 @@ export const DistributorPaymentsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Table of Distributor Payments */}
+      {/* Table of Distributor Payments & Balance Received */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold uppercase tracking-wider text-[11px]">
               <tr>
                 <th className="py-3 px-3.5">Date</th>
-                <th className="py-3 px-3.5">Category</th>
-                <th className="py-3 px-3.5">Distributor Name</th>
+                <th className="py-3 px-3.5">Flow Type</th>
+                <th className="py-3 px-3.5">Distributor & Wallet</th>
                 <th className="py-3 px-3.5 text-right">Amount (₹)</th>
-                <th className="py-3 px-3.5">Purpose of Payment</th>
+                <th className="py-3 px-3.5">Purpose / Notes</th>
                 <th className="py-3 px-3.5">Payment Mode</th>
                 <th className="py-3 px-3.5">Settlement Status</th>
                 <th className="py-3 px-3.5">Reference / UTR</th>
@@ -395,136 +474,157 @@ export const DistributorPaymentsTab: React.FC = () => {
               {filteredPayments.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
-                    No distributor payments recorded matching this filter.
+                    No records found matching this filter.
                   </td>
                 </tr>
               ) : (
-                filteredPayments.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors">
-                    {/* Date */}
-                    <td className="py-3 px-3.5 whitespace-nowrap font-mono font-bold text-slate-800 dark:text-slate-200">
-                      {item.date}
-                    </td>
+                filteredPayments.map((item) => {
+                  const isBalanceReceived = item.entryType === 'BALANCE_RECEIVED';
 
-                    {/* Category */}
-                    <td className="py-3 px-3.5 whitespace-nowrap">
-                      {item.distributorCategory === 'MONEY_TRANSFER' ? (
-                        <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/40 px-2 py-0.5 rounded text-[11px] flex items-center gap-1 w-max">
-                          <Send className="w-3 h-3" /> Money Transfer
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors">
+                      {/* Date */}
+                      <td className="py-3 px-3.5 whitespace-nowrap font-mono font-bold text-slate-800 dark:text-slate-200">
+                        {item.date}
+                      </td>
+
+                      {/* Flow Type Badge */}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {isBalanceReceived ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-800">
+                            <ArrowDownLeft className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                            Balance Received
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100/70 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800">
+                            <ArrowUpRight className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                            Payment Sent
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Distributor & Target Portal */}
+                      <td className="py-3 px-3.5">
+                        <div className="font-bold text-slate-900 dark:text-slate-100">{item.distributorName}</div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                          {item.targetPortalOrOperator && (
+                            <span className="px-1.5 py-0.2 bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 rounded font-semibold text-[10px]">
+                              {item.targetPortalOrOperator.replace('_', ' ')}
+                            </span>
+                          )}
+                          <span>{item.distributorCategory === 'MONEY_TRANSFER' ? 'DMT Provider' : 'Retail Accessories'}</span>
+                        </div>
+                      </td>
+
+                      {/* Amount */}
+                      <td className="py-3 px-3.5 text-right font-mono font-bold whitespace-nowrap">
+                        {isBalanceReceived ? (
+                          <span className="text-emerald-700 dark:text-emerald-400 text-sm">
+                            + {formatIndianCurrency(item.amount)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-900 dark:text-slate-100 text-sm">
+                            - {formatIndianCurrency(item.amount)}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Purpose */}
+                      <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300 max-w-xs truncate" title={item.purpose}>
+                        {item.purpose}
+                      </td>
+
+                      {/* Payment Mode */}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {item.paymentMode.replace(/_/g, ' ')}
                         </span>
-                      ) : (
-                        <span className="font-semibold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800/40 px-2 py-0.5 rounded text-[11px] flex items-center gap-1 w-max">
-                          <Smartphone className="w-3 h-3" /> Retail Accessories
-                        </span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* Distributor Name */}
-                    <td className="py-3 px-3.5">
-                      <span className="font-bold text-slate-900 dark:text-slate-100 block">{item.distributorName}</span>
-                      {item.notes && <span className="text-[11px] text-slate-400 dark:text-slate-500 block truncate max-w-[200px]">{item.notes}</span>}
-                    </td>
+                      {/* Status */}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {item.status === 'Settled' && (
+                          <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Settled
+                          </span>
+                        )}
+                        {item.status === 'Pending' && (
+                          <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> Pending
+                          </span>
+                        )}
+                        {item.status === 'Failed' && (
+                          <span className="text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1 font-mono text-[11px]">
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" /> Failed
+                          </span>
+                        )}
+                      </td>
 
-                    {/* Amount */}
-                    <td className="py-3 px-3.5 text-right font-mono font-extrabold text-slate-900 dark:text-slate-100 text-sm tabular-nums">
-                      {formatIndianCurrency(item.amount)}
-                    </td>
+                      {/* Reference / UTR */}
+                      <td className="py-3 px-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap text-[11px]">
+                        {item.referenceNumber}
+                      </td>
 
-                    {/* Purpose */}
-                    <td className="py-3 px-3.5 text-slate-700 dark:text-slate-300">
-                      <span className="font-medium">{item.purpose}</span>
-                    </td>
+                      {/* Quick Status Toggle */}
+                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                        {item.status === 'Pending' ? (
+                          <button
+                            type="button"
+                            onClick={() => togglePaymentStatus(item.id, 'Settled')}
+                            className="px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded border border-emerald-200 dark:border-emerald-800 transition-colors"
+                          >
+                            Mark Settled
+                          </button>
+                        ) : item.status === 'Settled' ? (
+                          <button
+                            type="button"
+                            onClick={() => togglePaymentStatus(item.id, 'Pending')}
+                            className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 underline"
+                          >
+                            Reopen
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => togglePaymentStatus(item.id, 'Settled')}
+                            className="px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded border border-emerald-200 dark:border-emerald-800 transition-colors"
+                          >
+                            Retry Settle
+                          </button>
+                        )}
+                      </td>
 
-                    {/* Mode */}
-                    <td className="py-3 px-3.5 whitespace-nowrap">
-                      <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
-                        {item.paymentMode.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-3 px-3.5 whitespace-nowrap">
-                      {item.status === 'Settled' && (
-                        <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1 font-mono text-[11px]">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Settled
-                        </span>
-                      )}
-                      {item.status === 'Pending' && (
-                        <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1 font-mono text-[11px]">
-                          <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> Pending
-                        </span>
-                      )}
-                      {item.status === 'Failed' && (
-                        <span className="text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1 font-mono text-[11px]">
-                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" /> Failed
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Reference / UTR */}
-                    <td className="py-3 px-3.5 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap text-[11px]">
-                      {item.referenceNumber}
-                    </td>
-
-                    {/* Quick Status Toggle */}
-                    <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                      {item.status === 'Pending' ? (
-                        <button
-                          type="button"
-                          onClick={() => togglePaymentStatus(item.id, 'Settled')}
-                          className="px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded border border-emerald-200 dark:border-emerald-800 transition-colors"
-                        >
-                          Mark Settled
-                        </button>
-                      ) : item.status === 'Settled' ? (
-                        <button
-                          type="button"
-                          onClick={() => togglePaymentStatus(item.id, 'Pending')}
-                          className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 underline"
-                        >
-                          Reopen
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => togglePaymentStatus(item.id, 'Settled')}
-                          className="px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded border border-emerald-200 dark:border-emerald-800 transition-colors"
-                        >
-                          Retry Settle
-                        </button>
-                      )}
-                    </td>
-
-                    {/* Manage (Edit/Delete) */}
-                    <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(item)}
-                          title="Edit Payment Record"
-                          className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteDistributorPaymentItem(item.id)}
-                          title="Delete Record"
-                          className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      {/* Manage (Edit/Delete) */}
+                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(item)}
+                            title="Edit Record"
+                            className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteDistributorPaymentItem(item.id)}
+                            title="Delete Record"
+                            className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Add / Edit Distributor Payment Modal */}
+      {/* Add / Edit Distributor Payment & Balance Received Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs">
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -532,10 +632,16 @@ export const DistributorPaymentsTab: React.FC = () => {
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                  {editingItem ? 'Edit Distributor Payment' : 'Log Distributor Payment'}
+                  {editingItem
+                    ? 'Edit Distributor Record'
+                    : formEntryType === 'BALANCE_RECEIVED'
+                    ? 'Log Distributor Balance Received (Float Top-up)'
+                    : 'Log Distributor Payment Handover (Outflow)'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Record exact payment handover for Money Transfer or Retail Accessories
+                  {formEntryType === 'BALANCE_RECEIVED'
+                    ? 'Records float received from distributor and auto-updates portal added balance'
+                    : 'Records cash or bank payout to distributor with live daily ledger sync'}
                 </p>
               </div>
               <button
@@ -548,49 +654,138 @@ export const DistributorPaymentsTab: React.FC = () => {
             </div>
 
             <form onSubmit={handleFormSubmit} className="p-6 space-y-4">
-              {/* Category Picker */}
+              {/* Flow Selector Tabs: Outflow vs Inflow */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Distributor Category *
+                  Transaction Type *
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => {
-                      setFormCategory('MONEY_TRANSFER');
-                      if (formDistributorName.includes('Accessories')) {
-                        setFormDistributorName('Go Payments Pvt Ltd');
-                      }
+                      setFormEntryType('PAYMENT_TO_DISTRIBUTOR');
                     }}
-                    className={`py-2 px-3 text-xs font-bold rounded-lg border flex items-center justify-center gap-2 transition-colors ${
-                      formCategory === 'MONEY_TRANSFER'
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    className={`p-2.5 rounded-lg border text-left flex items-center gap-2 transition-all ${
+                      formEntryType === 'PAYMENT_TO_DISTRIBUTOR'
+                        ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <Send className="w-4 h-4" />
-                    Money Transfer
+                    <ArrowUpRight className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold">Payment to Distributor</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">Cash/Bank Outflow to Vendor</div>
+                    </div>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => {
-                      setFormCategory('RETAIL_ACCESSORIES');
-                      if (!formDistributorName.includes('Accessories')) {
-                        setFormDistributorName('Royal Mobile Accessories');
-                      }
+                      setFormEntryType('BALANCE_RECEIVED');
+                      if (!formTargetPortal) setFormTargetPortal('VD_PAYS');
+                      if (formCategory !== 'MONEY_TRANSFER') setFormCategory('MONEY_TRANSFER');
                     }}
-                    className={`py-2 px-3 text-xs font-bold rounded-lg border flex items-center justify-center gap-2 transition-colors ${
-                      formCategory === 'RETAIL_ACCESSORIES'
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    className={`p-2.5 rounded-lg border text-left flex items-center gap-2 transition-all ${
+                      formEntryType === 'BALANCE_RECEIVED'
+                        ? 'border-emerald-600 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-2 ring-emerald-500 shadow-xs'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <Smartphone className="w-4 h-4" />
-                    Retail Accessories
+                    <ArrowDownLeft className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="text-xs font-bold">Balance Received (Top-up)</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">Float credited into wallet</div>
+                    </div>
                   </button>
                 </div>
               </div>
+
+              {/* Target Portal / Wallet slot when Balance is Received */}
+              {formEntryType === 'BALANCE_RECEIVED' && (
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+                  <label className="block text-xs font-bold text-emerald-950 dark:text-emerald-200">
+                    Wallet / Portal Where Balance Was Received *
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { key: 'VD_PAYS', label: 'VD Pays Solutions (DMT)', dist: 'VD Pays Solutions' },
+                      { key: 'GO_PAYMENTS', label: 'Go Payments (DMT & BBPS)', dist: 'Go Payments Pvt Ltd' },
+                      { key: 'THE_SIMPLE_PAY', label: 'The Simple Pay (TSP)', dist: 'The Simple Pay (TSP)' },
+                      { key: 'ONE_STOP', label: 'One Stop DMT', dist: 'One Stop Agency' },
+                      { key: 'AIRPAY', label: 'Airpay Services', dist: 'Airpay Systems' },
+                      { key: 'AIRTEL_MITRA', label: 'Airtel Mitra LAPU', dist: 'Airtel Territory Dist.' },
+                      { key: 'JIO_POS', label: 'Jio POS Plus LAPU', dist: 'Reliance Jio Dist.' },
+                      { key: 'SMART_CONNECT_VI', label: 'VI Smart Connect LAPU', dist: 'Vodafone Idea Dist.' },
+                    ].map((portal) => (
+                      <button
+                        key={portal.key}
+                        type="button"
+                        onClick={() => {
+                          setFormTargetPortal(portal.key);
+                          setFormDistributorName(portal.dist);
+                          setFormPurpose(`Balance float top-up credited into ${portal.label}`);
+                        }}
+                        className={`p-2 rounded-lg border text-left text-xs font-semibold transition-all ${
+                          formTargetPortal === portal.key
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-emerald-100/50 dark:hover:bg-slate-750'
+                        }`}
+                      >
+                        {portal.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-emerald-800 dark:text-emerald-300 mt-1">
+                    ⚡ Auto-Refresh: This amount will automatically add into the portal's Added Balance column and update DMT Sales calculations!
+                  </p>
+                </div>
+              )}
+
+              {/* Category Picker when Payment Handover */}
+              {formEntryType === 'PAYMENT_TO_DISTRIBUTOR' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Distributor Category *
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormCategory('MONEY_TRANSFER');
+                        if (formDistributorName.includes('Accessories')) {
+                          setFormDistributorName('Go Payments Pvt Ltd');
+                        }
+                      }}
+                      className={`py-2 px-3 text-xs font-bold rounded-lg border flex items-center justify-center gap-2 transition-colors ${
+                        formCategory === 'MONEY_TRANSFER'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Send className="w-4 h-4" />
+                      Money Transfer
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormCategory('RETAIL_ACCESSORIES');
+                        if (!formDistributorName.includes('Accessories')) {
+                          setFormDistributorName('Royal Mobile Accessories');
+                        }
+                      }}
+                      className={`py-2 px-3 text-xs font-bold rounded-lg border flex items-center justify-center gap-2 transition-colors ${
+                        formCategory === 'RETAIL_ACCESSORIES'
+                          ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      Retail Accessories
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Date & Amount */}
               <div className="grid grid-cols-2 gap-3">
@@ -625,20 +820,20 @@ export const DistributorPaymentsTab: React.FC = () => {
               {/* Distributor Name with Quick Presets */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Distributor Name *
+                  Distributor / Gateway Name *
                 </label>
                 <input
                   type="text"
                   required
                   value={formDistributorName}
                   onChange={(e) => setFormDistributorName(e.target.value)}
-                  placeholder="e.g. Go Payments Pvt Ltd or Royal Mobile Accessories"
+                  placeholder="e.g. VD Pays Solutions or Go Payments Pvt Ltd"
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500"
                 />
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   <span className="text-[11px] text-slate-400 dark:text-slate-500 self-center">Presets:</span>
                   {(formCategory === 'MONEY_TRANSFER'
-                    ? ['Go Payments Pvt Ltd', 'The Simple Pay (TSP)', 'VD Pays Solutions', 'Airtel CMS']
+                    ? ['VD Pays Solutions', 'Go Payments Pvt Ltd', 'The Simple Pay (TSP)', 'Airtel CMS']
                     : ['Royal Mobile Accessories', 'Hari Om Mobile Spares', 'Kaka Dist. Electronics']
                   ).map((preset) => (
                     <button
@@ -653,17 +848,17 @@ export const DistributorPaymentsTab: React.FC = () => {
                 </div>
               </div>
 
-              {/* Purpose of Payment */}
+              {/* Purpose */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Purpose of the Payment *
+                  Purpose / Description *
                 </label>
                 <input
                   type="text"
                   required
                   value={formPurpose}
                   onChange={(e) => setFormPurpose(e.target.value)}
-                  placeholder="e.g. Wallet Top-up for DMT rush or 50 Fast Chargers Invoice #418"
+                  placeholder="e.g. Balance Float Top-up for DMT or Wholesale Fast Chargers"
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
@@ -672,7 +867,7 @@ export const DistributorPaymentsTab: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Payment Mode
+                    Payment / Transfer Mode
                   </label>
                   <select
                     value={formPaymentMode}
@@ -680,7 +875,7 @@ export const DistributorPaymentsTab: React.FC = () => {
                     className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
                   >
                     <option value="BANK_NEFT_IMPS">Bank IMPS / NEFT</option>
-                    <option value="CASH_HANDOVER">Cash Handover (Draws Cash)</option>
+                    <option value="CASH_HANDOVER">Cash Handover</option>
                     <option value="UPI">UPI Payout</option>
                     <option value="CHEQUE">Cheque</option>
                   </select>
@@ -695,7 +890,7 @@ export const DistributorPaymentsTab: React.FC = () => {
                     onChange={(e) => setFormStatus(e.target.value as any)}
                     className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800"
                   >
-                    <option value="Settled">Settled (Zero Discrepancy)</option>
+                    <option value="Settled">Settled (Auto-Reconcile)</option>
                     <option value="Pending">Pending Verification</option>
                     <option value="Failed">Failed / Disputed</option>
                   </select>
@@ -724,17 +919,16 @@ export const DistributorPaymentsTab: React.FC = () => {
                     type="text"
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
-                    placeholder="e.g. Collection agent sign received"
+                    placeholder="e.g. Verified on distributor admin panel"
                     className="w-full px-3 py-1.5 border border-slate-300 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
               </div>
 
-              {/* Zero Discrepancy Notice */}
               <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400 font-medium">Reconciliation Rule:</span>
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Auto-Calculation Rule:</span>
                 <span className="font-bold font-mono text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Settled Payments Update Daily Cash Flow
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Refreshes Daily Ledger & Portals Immediately
                 </span>
               </div>
 
@@ -750,7 +944,7 @@ export const DistributorPaymentsTab: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 rounded-lg transition-colors shadow-xs"
                 >
-                  {editingItem ? 'Save Changes' : 'Record Distributor Payment'}
+                  {editingItem ? 'Save Changes' : formEntryType === 'BALANCE_RECEIVED' ? 'Record Balance Received' : 'Record Payment Handover'}
                 </button>
               </div>
             </form>

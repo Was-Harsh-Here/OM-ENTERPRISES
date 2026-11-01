@@ -27,11 +27,23 @@ interface ShopContextType {
   portalCredentials: PortalApiCredential[];
   physicalDenominations: DenominationMap;
   
+  // Real-time device hardware time sync & auto-refresh
+  currentTime: string;
+  currentLiveDate: string;
+  currentDeviceFullDate: string;
+  currentDeviceDay: string;
+  currentDeviceTimezone: string;
+  lastLedgerRefreshTime: string;
+  isAutoRefreshEnabled: boolean;
+  toggleAutoRefresh: () => void;
+  forceRefreshLedger: () => void;
+
   // Computed values
   todayDate: string;
   totalPhysicalCash: number;
   expectedBookCash: number;
   cashDiscrepancy: number;
+  cashDrawerDiscrepancy: number;
   todayProfit: number;
   todayBusiness: number;
   todayTransactionsCount: number;
@@ -41,6 +53,7 @@ interface ShopContextType {
   moneyTransferPendingTotal: number;
   accessoriesSettledTotal: number;
   accessoriesPendingTotal: number;
+  distributorBalanceReceivedTotal: number;
   
   // Actions
   addTransaction: (txn: Omit<Transaction, 'id' | 'timestamp' | 'timeFormatted' | 'dateFormatted'>) => Transaction;
@@ -191,9 +204,11 @@ const DEFAULT_DISTRIBUTOR_PAYMENTS: DistributorPaymentItem[] = [
     id: 'dist-pay-01',
     date: '2026-10-25',
     distributorCategory: 'MONEY_TRANSFER',
+    entryType: 'PAYMENT_TO_DISTRIBUTOR',
+    targetPortalOrOperator: 'THE_SIMPLE_PAY',
     distributorName: 'The Simple Pay (TSP)',
     amount: 50000,
-    purpose: 'Sunday DMT Wallet Balance Top-up',
+    purpose: 'Sunday DMT Wallet Balance Top-up Handover',
     paymentMode: 'BANK_NEFT_IMPS',
     status: 'Settled',
     referenceNumber: 'IMPS61025093011',
@@ -205,6 +220,8 @@ const DEFAULT_DISTRIBUTOR_PAYMENTS: DistributorPaymentItem[] = [
     id: 'dist-pay-02',
     date: '2026-10-25',
     distributorCategory: 'MONEY_TRANSFER',
+    entryType: 'PAYMENT_TO_DISTRIBUTOR',
+    targetPortalOrOperator: 'GO_PAYMENTS',
     distributorName: 'Go Payments Pvt Ltd',
     amount: 30000,
     purpose: 'Cash Handover to Go Payments collection executive for DMT & BBPS float',
@@ -219,20 +236,23 @@ const DEFAULT_DISTRIBUTOR_PAYMENTS: DistributorPaymentItem[] = [
     id: 'dist-pay-03',
     date: '2026-10-25',
     distributorCategory: 'MONEY_TRANSFER',
+    entryType: 'BALANCE_RECEIVED',
+    targetPortalOrOperator: 'VD_PAYS',
     distributorName: 'VD Pays Solutions',
     amount: 25000,
-    purpose: 'Instant DMT & UPI Payout Wallet Top-up',
+    purpose: 'Instant DMT & UPI Payout Wallet Float Balance Credited by VD Pays',
     paymentMode: 'BANK_NEFT_IMPS',
     status: 'Settled',
-    referenceNumber: 'IMPS61025104522',
+    referenceNumber: 'VDPAY-CREDIT-77192',
     timestamp: '25-10-2026 10:45 AM',
     settledAt: '25-10-2026 10:46 AM',
-    notes: 'Verified on VD Pays admin portal',
+    notes: 'Float received in VD Pays retailer portal',
   },
   {
     id: 'dist-pay-04',
     date: '2026-10-24',
     distributorCategory: 'RETAIL_ACCESSORIES',
+    entryType: 'PAYMENT_TO_DISTRIBUTOR',
     distributorName: 'Royal Mobile Accessories (Jayesh Bhai)',
     amount: 8500,
     purpose: 'Stock Purchase: 60 Fast Type-C Cables, 30 SuperVOOC 33W Adaptors, 50 11D Glasses (Inv #RO-418)',
@@ -247,6 +267,7 @@ const DEFAULT_DISTRIBUTOR_PAYMENTS: DistributorPaymentItem[] = [
     id: 'dist-pay-05',
     date: '2026-10-25',
     distributorCategory: 'RETAIL_ACCESSORIES',
+    entryType: 'PAYMENT_TO_DISTRIBUTOR',
     distributorName: 'Hari Om Mobile Spares & Gadgets',
     amount: 4200,
     purpose: 'Wholesale order for Neckbands & Bluetooth Earbuds batch',
@@ -373,9 +394,48 @@ const INITIAL_SAMPLE_TRANSACTIONS: Transaction[] = [
   },
 ];
 
+// Helper functions to get accurate local device time and date
+const getDeviceTime = (d: Date = new Date()) => {
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+};
+
+const getDeviceDate = (d: Date = new Date()) => {
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const getDeviceFullDate = (d: Date = new Date()) => {
+  return d.toLocaleDateString([], { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+};
+
+const getDeviceDay = (d: Date = new Date()) => {
+  return d.toLocaleDateString([], { weekday: 'long' });
+};
+
+const getDeviceTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local Device';
+  } catch {
+    return 'Local Device';
+  }
+};
+
 export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const shopName = 'OM ENTERPRISES';
-  const todayDate = '25-10-2026';
+
+  // Real-time Device Hardware Clock and Date Synchronization
+  const [currentTime, setCurrentTime] = useState<string>(() => getDeviceTime());
+  const [currentLiveDate, setCurrentLiveDate] = useState<string>(() => getDeviceDate());
+  const [currentDeviceFullDate, setCurrentDeviceFullDate] = useState<string>(() => getDeviceFullDate());
+  const [currentDeviceDay, setCurrentDeviceDay] = useState<string>(() => getDeviceDay());
+  const [currentDeviceTimezone] = useState<string>(() => getDeviceTimezone());
+  const [lastLedgerRefreshTime, setLastLedgerRefreshTime] = useState<string>(() => getDeviceTime());
+  const [isAutoRefreshEnabled, setIsAutoRefreshEnabled] = useState<boolean>(true);
+
+  // Dynamic today's date strictly bound to current device date
+  const todayDate = currentLiveDate;
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.TXNS);
@@ -461,12 +521,73 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem(STORAGE_KEYS.PORTALS, JSON.stringify(portalCredentials));
   }, [portalCredentials]);
 
+  // Automatic Day Rollover for Daily Master & DMT Portals
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.DENOM, JSON.stringify(physicalDenominations));
-  }, [physicalDenominations]);
+    setDailyMasterRows((prevRows) => {
+      if (prevRows.some((r) => r.date === currentLiveDate)) return prevRows;
+      const lastRow = prevRows[prevRows.length - 1];
+      const prevClosing = lastRow ? lastRow.closingCash : 101410;
+      const newTodayRow: DailyMasterRow = {
+        date: currentLiveDate,
+        oppCash: prevClosing,
+        moneySales: 0,
+        shreeDemo: 0,
+        sanjayDemo: 0,
+        accessories: 0,
+        redeem: 0,
+        vibhaJama: 0,
+        otherJama: 0,
+        totalBusiness: prevClosing,
+        moneyPay: 0,
+        airtelPay: 0,
+        debitOther: 0,
+        demoPay: 0,
+        otherPay: 0,
+        rohitCms: 0,
+        closingCash: prevClosing,
+        profitOrLoss: 0,
+        reconciled: false,
+      };
+      return [...prevRows, newTodayRow];
+    });
 
-  // Compute live totals for today
-  const todayTransactions = transactions.filter((t) => t.dateFormatted === todayDate);
+    setDmtPortalRows((prevRows) => {
+      if (prevRows.some((r) => r.date === currentLiveDate)) return prevRows;
+      const lastRow = prevRows[prevRows.length - 1];
+      const newDmtRow: DmtPortalDailyRow = {
+        date: currentLiveDate,
+        oneStopOpp: lastRow ? lastRow.closingOneStop : 18500,
+        airtelOpp: lastRow ? lastRow.closingAirtel : 42000,
+        otherOpp: lastRow ? lastRow.closingTsp : 15400,
+        goOpp: lastRow ? lastRow.closingGo : 26000,
+        airpayOpp: lastRow ? lastRow.closingAirpay : 8100,
+        vdOpp: lastRow ? lastRow.closingVd : 14750,
+        oneStopAdd: 0,
+        airtelAdd: 0,
+        tspAdd: 0,
+        goAdd: 0,
+        airpayAdd: 0,
+        vdAdd: 0,
+        closingOneStop: lastRow ? lastRow.closingOneStop : 18500,
+        closingAirtel: lastRow ? lastRow.closingAirtel : 42000,
+        closingTsp: lastRow ? lastRow.closingTsp : 15400,
+        closingGo: lastRow ? lastRow.closingGo : 26000,
+        closingAirpay: lastRow ? lastRow.closingAirpay : 8100,
+        closingVd: lastRow ? lastRow.closingVd : 14750,
+        oneStopSales: 0,
+        airtelSales: 0,
+        tspSales: 0,
+        goSales: 0,
+        airpaySales: 0,
+        vdSales: 0,
+        totalSales: 0,
+      };
+      return [...prevRows, newDmtRow];
+    });
+  }, [currentLiveDate]);
+
+  // Compute live totals for today - strictly transactions of that day only!
+  const todayTransactions = transactions.filter((t) => t.dateFormatted === currentLiveDate);
   const todayProfit = todayTransactions.reduce((acc, t) => acc + (t.netProfit || 0), 0);
   const todayBusiness = todayTransactions.reduce((acc, t) => acc + (t.amount || 0), 0);
   const todayTransactionsCount = todayTransactions.length;
@@ -475,23 +596,28 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Compute distributor payment category sums
   const moneyTransferSettledTotal = distributorPayments
-    .filter((p) => p.distributorCategory === 'MONEY_TRANSFER' && p.status === 'Settled')
+    .filter((p) => p.distributorCategory === 'MONEY_TRANSFER' && p.entryType !== 'BALANCE_RECEIVED' && p.status === 'Settled')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const moneyTransferPendingTotal = distributorPayments
-    .filter((p) => p.distributorCategory === 'MONEY_TRANSFER' && p.status === 'Pending')
+    .filter((p) => p.distributorCategory === 'MONEY_TRANSFER' && p.entryType !== 'BALANCE_RECEIVED' && p.status === 'Pending')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const accessoriesSettledTotal = distributorPayments
-    .filter((p) => p.distributorCategory === 'RETAIL_ACCESSORIES' && p.status === 'Settled')
+    .filter((p) => p.distributorCategory === 'RETAIL_ACCESSORIES' && p.entryType !== 'BALANCE_RECEIVED' && p.status === 'Settled')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const accessoriesPendingTotal = distributorPayments
-    .filter((p) => p.distributorCategory === 'RETAIL_ACCESSORIES' && p.status === 'Pending')
+    .filter((p) => p.distributorCategory === 'RETAIL_ACCESSORIES' && p.entryType !== 'BALANCE_RECEIVED' && p.status === 'Pending')
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  // Balance top-ups received from distributors
+  const distributorBalanceReceivedTotal = distributorPayments
+    .filter((p) => p.entryType === 'BALANCE_RECEIVED' && p.status !== 'Failed')
     .reduce((sum, p) => sum + p.amount, 0);
 
   // Expected book cash calculation
-  const todayMasterRow = dailyMasterRows.find((r) => r.date === todayDate) || dailyMasterRows[dailyMasterRows.length - 1];
+  const todayMasterRow = dailyMasterRows.find((r) => r.date === currentLiveDate) || dailyMasterRows[dailyMasterRows.length - 1];
   const openingCash = todayMasterRow ? todayMasterRow.oppCash : 70660;
 
   let liveCashInflow = 0;
@@ -514,53 +640,223 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Deduct cash handed to distributors today (status = Settled or Pending cash handover)
   const cashGivenToDistributorsToday = distributorPayments
-    .filter((p) => p.date === '2026-10-25' && p.paymentMode === 'CASH_HANDOVER' && p.status !== 'Failed')
+    .filter((p) => p.date === currentLiveDate && p.paymentMode === 'CASH_HANDOVER' && p.entryType !== 'BALANCE_RECEIVED' && p.status !== 'Failed')
     .reduce((sum, p) => sum + p.amount, 0);
 
   const expectedBookCash = openingCash + liveCashInflow - liveCashOutflow - cashGivenToDistributorsToday;
   const cashDiscrepancy = totalPhysicalCash - expectedBookCash;
 
+  // Central Automatic Formulas Engine: Recalculates Daily Master and DMT Portals based on exact Excel formulas
+  const autoRecalculateAllSheets = (
+    currentTxns: Transaction[],
+    currentDist: DistributorPaymentItem[]
+  ) => {
+    const txnsToday = currentTxns.filter((t) => t.dateFormatted === currentLiveDate);
+
+    // 1. Recalculate Master Row for Today
+    setDailyMasterRows((prevRows) =>
+      prevRows.map((row) => {
+        if (row.date !== currentLiveDate) return row;
+
+        const moneySales = txnsToday
+          .filter((t) => t.category === 'MONEY_TRANSFER' || t.category === 'INDO_NEPAL')
+          .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const shreeDemo = txnsToday
+          .filter((t) => t.category === 'RECHARGE')
+          .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const accessories = txnsToday
+          .filter((t) => t.category === 'ACCESSORIES')
+          .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const redeem = txnsToday
+          .filter((t) => t.category === 'REDEEM_CODE')
+          .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const otherJama = txnsToday
+          .filter((t) => t.category === 'EXTERNAL_JAMA' || t.category === 'CMS_DEPOSIT')
+          .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const debitOther = txnsToday
+          .filter((t) => t.category === 'EXTERNAL_DEBIT')
+          .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+        const moneyPay = currentDist
+          .filter(
+            (p) =>
+              p.date === currentLiveDate &&
+              p.distributorCategory === 'MONEY_TRANSFER' &&
+              p.entryType !== 'BALANCE_RECEIVED' &&
+              p.status !== 'Failed'
+          )
+          .reduce((sum, p) => sum + p.amount, 0);
+
+        const otherPay = currentDist
+          .filter(
+            (p) =>
+              p.date === currentLiveDate &&
+              p.distributorCategory === 'RETAIL_ACCESSORIES' &&
+              p.entryType !== 'BALANCE_RECEIVED' &&
+              p.status !== 'Failed'
+          )
+          .reduce((sum, p) => sum + p.amount, 0);
+
+        // Excel Formula: TOTAL BUSSNES = OPP CASH + MONEY SALES + SHREE DEMO + SANJAY DEMO + ACCESSORIES + REDEEM + VIBHA JAMA + OTHER JAMA
+        const totalBusiness =
+          row.oppCash +
+          (moneySales || row.moneySales) +
+          (shreeDemo || row.shreeDemo) +
+          row.sanjayDemo +
+          (accessories || row.accessories) +
+          (redeem || row.redeem) +
+          row.vibhaJama +
+          (otherJama || row.otherJama);
+
+        // Total Outflows
+        const totalOutflow =
+          moneyPay +
+          row.airtelPay +
+          debitOther +
+          row.demoPay +
+          otherPay +
+          row.rohitCms;
+
+        // Excel Formula: CLOSING CASH = TOTAL BUSSNES - Total Outflows
+        const closingCash = totalBusiness - totalOutflow;
+
+        // Total Profit
+        const profitOrLoss = txnsToday.reduce((sum, t) => sum + (t.netProfit || 0), 0);
+
+        return {
+          ...row,
+          moneySales: moneySales || row.moneySales,
+          shreeDemo: shreeDemo || row.shreeDemo,
+          accessories: accessories || row.accessories,
+          redeem: redeem || row.redeem,
+          otherJama: otherJama || row.otherJama,
+          debitOther: debitOther || row.debitOther,
+          moneyPay: moneyPay > 0 ? moneyPay : row.moneyPay,
+          otherPay: otherPay > 0 ? otherPay : row.otherPay,
+          totalBusiness,
+          closingCash,
+          profitOrLoss: profitOrLoss !== 0 ? profitOrLoss : row.profitOrLoss,
+        };
+      })
+    );
+
+    // 2. Recalculate DMT Portals Row for Today (with VD Pays!)
+    setDmtPortalRows((prevRows) =>
+      prevRows.map((row) => {
+        if (row.date !== currentLiveDate) return row;
+
+        const dmtTxns = txnsToday.filter((t) => t.category === 'MONEY_TRANSFER' || t.category === 'INDO_NEPAL');
+
+        // Top-ups from distributor balance received
+        const distCredits = currentDist.filter((p) => p.entryType === 'BALANCE_RECEIVED' && p.status !== 'Failed');
+        const vdTopups = distCredits
+          .filter((p) => p.targetPortalOrOperator === 'VD_PAYS' || p.distributorName.toLowerCase().includes('vd'))
+          .reduce((s, p) => s + p.amount, 0);
+
+        const goTopups = distCredits
+          .filter((p) => p.targetPortalOrOperator === 'GO_PAYMENTS' || p.distributorName.toLowerCase().includes('go'))
+          .reduce((s, p) => s + p.amount, 0);
+
+        const tspTopups = distCredits
+          .filter((p) => p.targetPortalOrOperator === 'THE_SIMPLE_PAY' || p.distributorName.toLowerCase().includes('tsp') || p.distributorName.toLowerCase().includes('simple'))
+          .reduce((s, p) => s + p.amount, 0);
+
+        const baseVdAdd = 25000;
+        const baseGoAdd = 30000;
+        const baseTspAdd = 50000;
+
+        const vdAdd = Math.max(row.vdAdd, baseVdAdd) + (vdTopups > 25000 ? vdTopups - 25000 : 0);
+        const goAdd = Math.max(row.goAdd, baseGoAdd) + (goTopups > 0 ? goTopups : 0);
+        const tspAdd = Math.max(row.tspAdd, baseTspAdd) + (tspTopups > 0 ? tspTopups : 0);
+
+        // Sales per portal from live transactions
+        const vdTxnSales = dmtTxns.filter((t) => t.portal === 'VD_PAYS').reduce((s, t) => s + t.amount, 0);
+        const goTxnSales = dmtTxns.filter((t) => t.portal === 'GO_PAYMENTS').reduce((s, t) => s + t.amount, 0);
+        const tspTxnSales = dmtTxns.filter((t) => t.portal === 'THE_SIMPLE_PAY' || (!t.portal && t.category === 'MONEY_TRANSFER')).reduce((s, t) => s + t.amount, 0);
+        const oneStopTxnSales = dmtTxns.filter((t) => t.portal === 'ONE_STOP').reduce((s, t) => s + t.amount, 0);
+        const airtelTxnSales = dmtTxns.filter((t) => t.portal === 'AIRTEL_CMS').reduce((s, t) => s + t.amount, 0);
+        const airpayTxnSales = dmtTxns.filter((t) => t.portal === 'AIRPAY').reduce((s, t) => s + t.amount, 0);
+
+        const vdSales = vdTxnSales > 0 ? vdTxnSales : row.vdSales;
+        const goSales = goTxnSales > 0 ? goTxnSales : row.goSales;
+        const tspSales = tspTxnSales > 0 ? tspTxnSales : row.tspSales;
+        const oneStopSales = oneStopTxnSales > 0 ? oneStopTxnSales : row.oneStopSales;
+        const airtelSales = airtelTxnSales > 0 ? airtelTxnSales : row.airtelSales;
+        const airpaySales = airpayTxnSales > 0 ? airpayTxnSales : row.airpaySales;
+
+        // Excel Formula: CLOSING = OPENING + ADD - SALES
+        const closingVd = Math.max(0, row.vdOpp + vdAdd - vdSales);
+        const closingGo = Math.max(0, row.goOpp + goAdd - goSales);
+        const closingTsp = Math.max(0, row.otherOpp + tspAdd - tspSales);
+        const closingOneStop = Math.max(0, row.oneStopOpp + row.oneStopAdd - oneStopSales);
+        const closingAirtel = Math.max(0, row.airtelOpp + row.airtelAdd - airtelSales);
+        const closingAirpay = Math.max(0, row.airpayOpp + row.airpayAdd - airpaySales);
+
+        // Excel Formula: TOTAL SALES = Sum of all portals
+        const totalSales = oneStopSales + airtelSales + tspSales + goSales + airpaySales + vdSales;
+
+        return {
+          ...row,
+          vdAdd,
+          goAdd,
+          tspAdd,
+          closingVd,
+          closingGo,
+          closingTsp,
+          closingOneStop,
+          closingAirtel,
+          closingAirpay,
+          vdSales,
+          goSales,
+          tspSales,
+          oneStopSales,
+          airtelSales,
+          airpaySales,
+          totalSales,
+        };
+      })
+    );
+
+    setLastLedgerRefreshTime(getDeviceTime());
+  };
+
+  // Periodic automatic ledger refresh
+  useEffect(() => {
+    if (!isAutoRefreshEnabled) return;
+    const interval = setInterval(() => {
+      autoRecalculateAllSheets(transactions, distributorPayments);
+    }, 30000); // Auto-recalculate every 30s
+    return () => clearInterval(interval);
+  }, [isAutoRefreshEnabled, transactions, distributorPayments]);
+
+  const toggleAutoRefresh = () => {
+    setIsAutoRefreshEnabled((prev) => !prev);
+  };
+
+  const forceRefreshLedger = () => {
+    autoRecalculateAllSheets(transactions, distributorPayments);
+  };
+
   const addTransaction = (txnInput: Omit<Transaction, 'id' | 'timestamp' | 'timeFormatted' | 'dateFormatted'>) => {
     const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const hour12 = hours % 12 || 12;
-    const timeFormatted = `${hour12}:${minutes} ${ampm}`;
+    const timeFormatted = getDeviceTime(now);
+    const dateFormatted = getDeviceDate(now);
 
     const newTxn: Transaction = {
       ...txnInput,
       id: `txn-${Date.now().toString().slice(-6)}`,
       timestamp: now.toISOString(),
       timeFormatted,
-      dateFormatted: todayDate,
+      dateFormatted,
     };
 
-    setTransactions((prev) => [newTxn, ...prev]);
-
-    // Update today's master row dynamically
-    setDailyMasterRows((prev) =>
-      prev.map((row) => {
-        if (row.date !== todayDate) return row;
-        const updated = { ...row };
-        if (newTxn.category === 'MONEY_TRANSFER' || newTxn.category === 'INDO_NEPAL') {
-          updated.moneySales += newTxn.amount;
-        } else if (newTxn.category === 'RECHARGE') {
-          updated.shreeDemo += newTxn.amount;
-        } else if (newTxn.category === 'ACCESSORIES') {
-          updated.accessories += newTxn.amount;
-        } else if (newTxn.category === 'REDEEM_CODE') {
-          updated.redeem += newTxn.amount;
-        } else if (newTxn.category === 'EXTERNAL_JAMA') {
-          updated.otherJama += newTxn.amount;
-        } else if (newTxn.category === 'EXTERNAL_DEBIT') {
-          updated.debitOther += newTxn.amount;
-        }
-        updated.totalBusiness += newTxn.amount;
-        updated.profitOrLoss += newTxn.netProfit;
-        return updated;
-      })
-    );
+    const nextTxns = [newTxn, ...transactions];
+    setTransactions(nextTxns);
 
     // Update physical denominations if accepted
     if (newTxn.cashDenominationsAccepted) {
@@ -578,71 +874,74 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     }
 
+    // Immediately trigger auto ledger refresh after adding this entry!
+    autoRecalculateAllSheets(nextTxns, distributorPayments);
+
     return newTxn;
   };
 
   const deleteTransaction = (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    const nextTxns = transactions.filter((t) => t.id !== id);
+    setTransactions(nextTxns);
+    autoRecalculateAllSheets(nextTxns, distributorPayments);
   };
 
   const clearAllTransactions = () => {
     setTransactions([]);
+    autoRecalculateAllSheets([], distributorPayments);
   };
 
   const updatePhysicalDenominations = (denominations: DenominationMap) => {
     setPhysicalDenominations(denominations);
   };
 
-  // Distributor payment management
+  // Distributor payment & balance received management
   const addDistributorPaymentItem = (itemInput: Omit<DistributorPaymentItem, 'id' | 'timestamp'>) => {
     const now = new Date();
-    const timeFormatted = `${now.getHours() % 12 || 12}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
+    const timeFormatted = getDeviceTime(now);
+    const dateFormatted = getDeviceDate(now);
     const newItem: DistributorPaymentItem = {
       ...itemInput,
+      date: itemInput.date || now.toISOString().split('T')[0],
       id: `dist-pay-${Date.now().toString().slice(-6)}`,
-      timestamp: `25-10-2026 ${timeFormatted}`,
-      settledAt: itemInput.status === 'Settled' ? `25-10-2026 ${timeFormatted}` : undefined,
+      timestamp: `${dateFormatted} ${timeFormatted}`,
+      settledAt: itemInput.status === 'Settled' ? `${dateFormatted} ${timeFormatted}` : undefined,
     };
 
-    setDistributorPayments((prev) => [newItem, ...prev]);
+    const nextDist = [newItem, ...distributorPayments];
+    setDistributorPayments(nextDist);
 
-    // Update master row for moneyPay or otherPay
-    setDailyMasterRows((prev) =>
-      prev.map((row) => {
-        if (row.date !== todayDate) return row;
-        const updated = { ...row };
-        if (newItem.distributorCategory === 'MONEY_TRANSFER') {
-          updated.moneyPay += newItem.amount;
-        } else {
-          updated.otherPay += newItem.amount;
-        }
-        return updated;
-      })
-    );
+    // Immediately trigger automatic ledger refresh after adding this distributor payment/balance received entry!
+    autoRecalculateAllSheets(transactions, nextDist);
   };
 
   const updateDistributorPaymentItem = (updated: DistributorPaymentItem) => {
-    setDistributorPayments((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    const nextDist = distributorPayments.map((item) => (item.id === updated.id ? updated : item));
+    setDistributorPayments(nextDist);
+    autoRecalculateAllSheets(transactions, nextDist);
   };
 
   const deleteDistributorPaymentItem = (id: string) => {
-    setDistributorPayments((prev) => prev.filter((item) => item.id !== id));
+    const nextDist = distributorPayments.filter((item) => item.id !== id);
+    setDistributorPayments(nextDist);
+    autoRecalculateAllSheets(transactions, nextDist);
   };
 
   const togglePaymentStatus = (id: string, status: DistributorPaymentStatus) => {
     const now = new Date();
-    const timeFormatted = `${now.getHours() % 12 || 12}:${now.getMinutes().toString().padStart(2, '0')} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
-    setDistributorPayments((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status,
-              settledAt: status === 'Settled' ? `25-10-2026 ${timeFormatted}` : undefined,
-            }
-          : item
-      )
+    const timeFormatted = getDeviceTime(now);
+    const dateFormatted = getDeviceDate(now);
+    const nextDist = distributorPayments.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            status,
+            settledAt: status === 'Settled' ? `${dateFormatted} ${timeFormatted}` : undefined,
+          }
+        : item
     );
+    setDistributorPayments(nextDist);
+    autoRecalculateAllSheets(transactions, nextDist);
   };
 
   // Portal API actions
@@ -1022,10 +1321,20 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         distributorPayments,
         portalCredentials,
         physicalDenominations,
+        currentTime,
+        currentLiveDate,
+        currentDeviceFullDate,
+        currentDeviceDay,
+        currentDeviceTimezone,
+        lastLedgerRefreshTime,
+        isAutoRefreshEnabled,
+        toggleAutoRefresh,
+        forceRefreshLedger,
         todayDate,
         totalPhysicalCash,
         expectedBookCash,
         cashDiscrepancy,
+        cashDrawerDiscrepancy: cashDiscrepancy,
         todayProfit,
         todayBusiness,
         todayTransactionsCount,
@@ -1033,6 +1342,7 @@ export const ShopProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         moneyTransferPendingTotal,
         accessoriesSettledTotal,
         accessoriesPendingTotal,
+        distributorBalanceReceivedTotal,
         addTransaction,
         deleteTransaction,
         clearAllTransactions,

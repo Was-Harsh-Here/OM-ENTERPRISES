@@ -74,11 +74,14 @@ export interface Transaction {
 // Dedicated Distributor Payment Tracking (Money Transfer vs Retail Accessories)
 export type DistributorCategoryType = 'MONEY_TRANSFER' | 'RETAIL_ACCESSORIES';
 export type DistributorPaymentStatus = 'Pending' | 'Settled' | 'Failed';
+export type DistributorEntryType = 'PAYMENT_TO_DISTRIBUTOR' | 'BALANCE_RECEIVED';
 
 export interface DistributorPaymentItem {
   id: string;
   date: string; // e.g. "2026-10-25"
   distributorCategory: DistributorCategoryType;
+  entryType?: DistributorEntryType; // Outflow (Payment Sent) vs Inflow (Balance / Top-up Received)
+  targetPortalOrOperator?: string; // e.g. "VD_PAYS", "GO_PAYMENTS", "THE_SIMPLE_PAY", "AIRPAY", "AIRTEL_MITRA", "JIO_POS"
   distributorName: string;
   amount: number;
   purpose: string; // e.g. "Wallet Top-up for DMT rush", "Purchase of 50 Fast Chargers Inv #89"
@@ -101,14 +104,14 @@ export interface DailyMasterRow {
   redeem: number; // Google Play / Redeem code sales
   vibhaJama: number; // Vibha Jama
   otherJama: number; // Other deposits
-  totalBusiness: number; // Total Inflow / Business
+  totalBusiness: number; // Total Inflow / Business = oppCash + moneySales + shreeDemo + sanjayDemo + accessories + redeem + vibhaJama + otherJama
   moneyPay: number; // Cash given to DMT distributors
   airtelPay: number; // Airtel payments
   debitOther: number; // External Debits
   demoPay: number; // Cash given to recharge distributors
   otherPay: number; // Other expenses
   rohitCms: number; // Rohit CMS handover
-  closingCash: number; // Physical Closing Cash
+  closingCash: number; // Physical / Expected Closing Cash = totalBusiness - Outflows
   profitOrLoss: number; // Net Profit or Loss for the day
   reconciled: boolean;
 }
@@ -118,28 +121,29 @@ export interface DmtPortalDailyRow {
   date: string;
   oneStopOpp: number;
   airtelOpp: number;
-  otherOpp: number;
+  otherOpp: number; // TSP Opening
   goOpp: number;
   airpayOpp: number;
+  vdOpp: number; // VD Pays Opening Balance
   oneStopAdd: number;
   airtelAdd: number;
   tspAdd: number;
   goAdd: number;
   airpayAdd: number;
-  vdAdd: number;
+  vdAdd: number; // VD Pays Balance Add (Top-up received)
   closingOneStop: number;
   closingAirtel: number;
   closingTsp: number;
   closingGo: number;
   closingAirpay: number;
-  closingVd: number;
+  closingVd: number; // VD Pays Closing Balance
   oneStopSales: number;
   airtelSales: number;
   tspSales: number;
   goSales: number;
   airpaySales: number;
-  vdSales: number;
-  totalSales: number;
+  vdSales: number; // VD Pays Sales Disbursal = vdOpp + vdAdd - closingVd
+  totalSales: number; // Sum of all portal sales
 }
 
 // LAPU Recharges Sheet (matches Image 3 & 4: image_014ea637.png & image_a6e26a45.png)

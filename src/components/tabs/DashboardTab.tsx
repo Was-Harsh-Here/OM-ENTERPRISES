@@ -23,6 +23,8 @@ import {
   Cpu,
   QrCode,
   Globe,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -56,12 +58,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     distributorPayments,
     moneyTransferSettledTotal,
     accessoriesSettledTotal,
+    currentTime,
+    currentLiveDate,
+    currentDeviceFullDate,
+    currentDeviceDay,
+    currentDeviceTimezone,
+    isAutoRefreshEnabled,
+    forceRefreshLedger,
+    lastLedgerRefreshTime,
   } = useShop();
 
   const [hoveredPoint, setHoveredPoint] = useState<{ date: string; business: number; profit: number } | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // Today's summary
-  const todayTransactions = transactions.filter((t) => t.dateFormatted === todayDate);
+  const handleManualSync = () => {
+    setIsSyncing(true);
+    forceRefreshLedger();
+    setTimeout(() => setIsSyncing(false), 500);
+  };
+
+  // Today's summary - strictly transactions of that day only!
+  const todayTransactions = transactions.filter(
+    (t) => t.dateFormatted === currentLiveDate
+  );
 
   // Quick Action cards
   const quickActions: {
@@ -141,12 +160,12 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1">
+            <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-1 flex-wrap">
               <span>{shopName}</span>
               <span>·</span>
               <span>Counter Terminal #01</span>
               <span>·</span>
-              <span>Sunday, {todayDate}</span>
+              <span className="text-amber-300 font-bold">{currentDeviceDay}, {currentLiveDate}</span>
               <span>·</span>
               <span className="text-emerald-400 flex items-center gap-1 font-mono">
                 <CheckCircle2 className="w-3.5 h-3.5" /> 8/8 Portals Online
@@ -158,6 +177,37 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <p className="text-sm text-slate-300 mt-1 max-w-2xl">
               Automated API sync with Go Payments, The Simple Pay, VD Pays, Airtel Mitra, Ctopup, Jio POS+, Smart Connect, and Tata mSales.
             </p>
+
+            {/* Live Running Device Clock & Sync Widget */}
+            <div className="mt-3.5 inline-flex items-center gap-2.5 sm:gap-3 px-3.5 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl text-xs flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider">
+                  Device Hardware Synced
+                </span>
+              </div>
+              <span className="text-white/30 hidden sm:inline">|</span>
+              <div className="flex items-center gap-1.5 font-mono text-sm font-extrabold text-white">
+                <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
+                <span className="tabular-nums tracking-wide">{currentTime}</span>
+              </div>
+              <span className="text-white/30 hidden md:inline">|</span>
+              <div className="text-xs text-indigo-200 font-medium hidden md:inline">
+                <span>{currentDeviceFullDate}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleManualSync}
+                title={`Last recalculated: ${lastLedgerRefreshTime}. Device timezone: ${currentDeviceTimezone}. Click to force sync.`}
+                className="flex items-center gap-1 text-[11px] font-bold text-amber-300 hover:text-amber-200 pl-2 border-l border-white/20 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>Sync Now</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
@@ -530,8 +580,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         </div>
 
         {todayTransactions.length === 0 ? (
-          <div className="py-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
-            No transactions recorded yet today. Click "New Transaction" or "Portal APIs & Sync" to fetch live entries.
+          <div className="py-10 text-center bg-slate-50/50 dark:bg-slate-800/30 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl space-y-2 p-6">
+            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+              Clean Day Register — No transactions logged for today ({currentLiveDate}) yet
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              With each new day, the live counter stream strictly starts fresh for that day. Click "New Transaction" to record today's first customer entry.
+            </p>
+            <div className="pt-2 flex items-center justify-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => onOpenNewTxnWithCategory('MONEY_TRANSFER')}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
+              >
+                + New Transaction
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('transactions')}
+                className="px-3.5 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
+              >
+                View Historical Ledger ({transactions.length})
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

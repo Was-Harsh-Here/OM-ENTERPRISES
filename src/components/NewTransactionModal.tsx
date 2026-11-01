@@ -46,7 +46,7 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
   onClose,
   defaultCategory = 'MONEY_TRANSFER',
 }) => {
-  const { addTransaction } = useShop();
+  const { addTransaction, currentTime, currentLiveDate, currentDeviceFullDate } = useShop();
 
   const [category, setCategory] = useState<TransactionCategory>(defaultCategory);
   const [amount, setAmount] = useState<string>('');
@@ -236,9 +236,15 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
               <CreditCard className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               New Retail Transaction Entry
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Fast-entry with auto profit tracking, cash denomination drawer, and multi-portal ledger
-            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Fast-entry with auto profit tracking & live multi-portal ledger
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-[10px] font-mono text-emerald-700 dark:text-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{currentLiveDate} · {currentTime}</span>
+              </span>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -543,23 +549,32 @@ export const NewTransactionModal: React.FC<NewTransactionModalProps> = ({
                     [
                       { key: 'GO_PAYMENTS', label: 'Go Payments (API Ready)' },
                       { key: 'THE_SIMPLE_PAY', label: 'The Simple Pay (TSP)' },
-                      { key: 'VD_PAYS', label: 'VD Pays Solutions' },
+                      { key: 'VD_PAYS', label: 'VD Pays Solutions', badge: 'Auto Calc' },
                       { key: 'AIRTEL_CMS', label: 'Airtel CMS / Bank' },
                       { key: 'ONE_STOP', label: 'One Stop DMT' },
                       { key: 'AIRPAY', label: 'Airpay Services' },
-                    ] as { key: DmtPortal; label: string }[]
+                    ] as { key: DmtPortal; label: string; badge?: string }[]
                   ).map((p) => (
                     <button
                       key={p.key}
                       type="button"
                       onClick={() => setPortal(p.key)}
-                      className={`p-2 text-left text-xs font-semibold rounded-lg border transition-colors ${
+                      className={`p-2 text-left text-xs font-semibold rounded-lg border transition-all relative ${
                         portal === p.key
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs ring-1 ring-blue-500'
                           : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
                       }`}
                     >
-                      {p.label}
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="truncate">{p.label}</span>
+                        {p.badge && (
+                          <span className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold ${
+                            portal === p.key ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                          }`}>
+                            {p.badge}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>

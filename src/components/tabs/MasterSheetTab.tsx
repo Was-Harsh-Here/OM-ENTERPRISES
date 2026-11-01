@@ -2,13 +2,31 @@ import React, { useState } from 'react';
 import { useShop } from '../../context/ShopContext';
 import { DailyMasterRow } from '../../types';
 import { formatIndianCurrency, exportToCsv } from '../../utils/calculations';
-import { Download, Table, Edit2, Check, X, Plus } from 'lucide-react';
+import { Download, Table, Edit2, Check, X, Plus, RefreshCw, Calculator, ShieldCheck, Clock } from 'lucide-react';
 
 export const MasterSheetTab: React.FC = () => {
-  const { dailyMasterRows, updateMasterRow, todayDate } = useShop();
+  const {
+    dailyMasterRows,
+    updateMasterRow,
+    todayDate,
+    currentTime,
+    currentLiveDate,
+    currentDeviceFullDate,
+    lastLedgerRefreshTime,
+    isAutoRefreshEnabled,
+    toggleAutoRefresh,
+    forceRefreshLedger,
+  } = useShop();
 
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<DailyMasterRow | null>(null);
+  const [isRecalculating, setIsRecalculating] = useState<boolean>(false);
+
+  const handleManualRecalculate = () => {
+    setIsRecalculating(true);
+    forceRefreshLedger();
+    setTimeout(() => setIsRecalculating(false), 500);
+  };
 
   const startEditing = (row: DailyMasterRow) => {
     setEditingDate(row.date);
@@ -120,15 +138,81 @@ export const MasterSheetTab: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Live Time Sync & Auto Refresh Indicator */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+              {currentDeviceFullDate || currentLiveDate} · <span className="text-indigo-600 dark:text-indigo-400 font-bold">{currentTime}</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleManualRecalculate}
+              title={`Last auto-recalculation: ${lastLedgerRefreshTime}. Click to force sync now.`}
+              className="flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 pl-1.5 border-l border-slate-300 dark:border-slate-600 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRecalculating ? 'animate-spin' : ''}`} />
+              <span>Sync Formulas</span>
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
           >
             <Download className="w-4 h-4 text-slate-600 dark:text-slate-400" />
             <span>Export Master Sheet (.CSV)</span>
           </button>
+        </div>
+      </div>
+
+      {/* Excel Formula Reference Banner */}
+      <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-4 rounded-xl shadow-xs border border-indigo-800/60">
+        <div className="flex items-center justify-between mb-2 pb-2 border-b border-indigo-700/50">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-bold tracking-wide uppercase text-indigo-200">
+              Active Excel Master Mathematical Engine & Automatic Sync
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono font-semibold">
+              Live Auto-Refresh: Active (Triggers after each entry)
+            </span>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Last Calc: {lastLedgerRefreshTime}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+          <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60">
+            <span className="text-[10px] text-amber-300 font-bold block mb-1">
+              [1] TOTAL BUSSNES FORMULA:
+            </span>
+            <div className="text-slate-200 text-[11px] font-semibold leading-relaxed">
+              = OPP CASH + MONEY SALES + SHREE DEMO + SANJAY DEMO + ACCESSORIES + REDEEM + VIBHA JAMA + OTHER JAMA
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">
+              Sums all shop opening cash plus gross service collections for the day
+            </div>
+          </div>
+
+          <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/60">
+            <span className="text-[10px] text-rose-300 font-bold block mb-1">
+              [2] CLOSING CASH FORMULA:
+            </span>
+            <div className="text-slate-200 text-[11px] font-semibold leading-relaxed">
+              = TOTAL BUSSNES - (MONEY PAY + AIRTEL PAY + DEBIT OTHER + DEMO PAY + OTHER PAY + ROHIT CMS)
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">
+              Deducts all provider settlements, distributor disbursements, and CMS deposits
+            </div>
+          </div>
         </div>
       </div>
 
